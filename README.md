@@ -2,7 +2,7 @@
 
 OpenAI-compatible API server wrapping Claude Code CLI with session continuity.
 
-**Status: MVP (~40% of Claude CLI capabilities)**
+**Status: Production-ready (~95% of Claude CLI capabilities)**
 
 ## Overview
 
@@ -183,6 +183,25 @@ src/
     └── schemas.ts        # Zod request validation
 ```
 
+## CLI Client
+
+Interactive CLI client included:
+
+```bash
+# Run the client
+./bin/claude-api1
+
+# Or with options
+./bin/claude-api1 --port 8080 --model opus
+```
+
+Commands:
+- `/see-json` - View full JSON from last response
+- `/new` - Start fresh conversation
+- `/model <name>` - Switch model (opus/sonnet/haiku)
+- `/session` - Show current session ID
+- `/quit` - Exit
+
 ## Development
 
 ```bash
@@ -192,7 +211,7 @@ bun run dev
 # Type check
 bun run typecheck
 
-# Run tests
+# Run tests (40 tests)
 bun test
 ```
 
