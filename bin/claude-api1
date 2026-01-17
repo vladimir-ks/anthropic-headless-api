@@ -1,0 +1,10 @@
+#!/bin/bash
+# claude-api1 - Interactive CLI for anthropic-headless-api
+#
+# This wrapper allows running the CLI from anywhere.
+# Install: ln -s /path/to/anthropic-headless-api/bin/claude-api1 /usr/local/bin/claude-api1
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+exec bun run "$PROJECT_DIR/src/cli/client.ts" "$@"
