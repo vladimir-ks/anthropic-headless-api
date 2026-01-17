@@ -246,8 +246,9 @@ async function handleRequest(
 
       // Check for session_id in header (alternative to body)
       const headerSessionId = req.headers.get('X-Session-Id');
-      if (headerSessionId && !body.session_id) {
-        // Validate UUID format
+
+      // Validate header if present (even if body also has session_id)
+      if (headerSessionId) {
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (!uuidRegex.test(headerSessionId)) {
           return jsonResponse(
@@ -262,7 +263,11 @@ async function handleRequest(
             rateLimitHeaders(rateLimitResult)
           );
         }
-        body.session_id = headerSessionId;
+
+        // Use header only if body doesn't have session_id
+        if (!body.session_id) {
+          body.session_id = headerSessionId;
+        }
       }
 
       log.info(

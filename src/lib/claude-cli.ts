@@ -378,7 +378,10 @@ export function buildPromptWithHistory(
   // Claude already has the conversation history internally
   if (hasSessionId) {
     const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
-    return lastUserMessage?.content || '';
+    if (!lastUserMessage) {
+      throw new Error('Cannot resume session: no user messages found in conversation');
+    }
+    return lastUserMessage.content;
   }
 
   // For new sessions, build full context
