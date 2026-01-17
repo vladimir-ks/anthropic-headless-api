@@ -162,6 +162,18 @@ export function buildContextString(contextInfo: ContextInfo): string {
 
 /**
  * Read specific files and return their contents
+ *
+ * NOTE: This function is currently exported but unused in the codebase.
+ * It is reserved for future API expansion to support:
+ * - Custom context file selection via API
+ * - Multi-file context injection
+ * - Programmatic context management
+ *
+ * Security: Includes path traversal validation via validateSafePath()
+ *
+ * @param directory - Base directory to read from
+ * @param filenames - Array of filenames relative to directory
+ * @returns Map of filename to file contents
  */
 export async function readContextFiles(
   directory: string,

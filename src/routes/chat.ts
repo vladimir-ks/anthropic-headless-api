@@ -146,10 +146,11 @@ export async function handleChatCompletion(
   // Build response with actual token counts from Claude
   const completionId = generateCompletionId();
 
-  // Determine the model name from metadata or request
-  const modelName = result.metadata?.modelUsage
-    ? Object.keys(result.metadata.modelUsage).find((m) => !m.includes('haiku')) || 'claude-code-cli'
-    : request.model || 'claude-code-cli';
+  // Use the requested model, or extract from metadata, or default
+  const modelName =
+    request.model ||
+    (result.metadata?.modelUsage ? Object.keys(result.metadata.modelUsage)[0] : null) ||
+    'claude-code-cli';
 
   const response: ChatCompletionResponse = {
     id: completionId,
@@ -207,7 +208,8 @@ export async function* handleStreamingChatCompletion(
   const sessionId = result.session_id;
 
   // Simulate streaming by yielding chunks
-  const chunkSize = 20; // characters per chunk
+  // Configurable via STREAMING_CHUNK_SIZE env var (default: 20)
+  const chunkSize = parseInt(process.env.STREAMING_CHUNK_SIZE || '20', 10);
   for (let i = 0; i < content.length; i += chunkSize) {
     const chunk = content.slice(i, i + chunkSize);
     yield {

@@ -23,6 +23,9 @@ export class RateLimiter {
   private config: Required<RateLimitConfig>;
   private cleanupRunning = false;
 
+  /** Maximum number of tracked clients before LRU eviction (prevents unbounded growth) */
+  private static readonly MAX_ENTRIES = 10000;
+
   /** Cleanup interval handle */
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -116,6 +119,7 @@ export class RateLimiter {
 
   /**
    * Get current status for a key
+   * Returns a defensive copy to prevent mutation of internal state
    */
   getStatus(key: string): RateLimitStatus {
     const entry = this.entries.get(key);
@@ -129,6 +133,7 @@ export class RateLimiter {
 
     const now = Date.now();
     const windowStart = now - this.config.windowMs;
+    // filter() creates a new array, preventing mutation of internal timestamps
     const activeTimestamps = entry.timestamps.filter((t) => t > windowStart);
 
     return {
@@ -142,6 +147,7 @@ export class RateLimiter {
   /**
    * Clean up old entries to prevent memory growth
    * Prevents concurrent cleanup to avoid race conditions
+   * Implements LRU eviction if entry count exceeds MAX_ENTRIES
    */
   private cleanup(): void {
     // Prevent concurrent cleanup runs
@@ -174,6 +180,21 @@ export class RateLimiter {
       // Delete entries after iteration
       for (const key of keysToDelete) {
         this.entries.delete(key);
+      }
+
+      // LRU eviction: if still over limit, remove oldest inactive entries
+      if (this.entries.size > RateLimiter.MAX_ENTRIES) {
+        const entriesToEvict = this.entries.size - RateLimiter.MAX_ENTRIES;
+        const sortedEntries = Array.from(this.entries.entries())
+          .map(([key, entry]) => ({
+            key,
+            lastActivity: entry.timestamps[entry.timestamps.length - 1] || 0,
+          }))
+          .sort((a, b) => a.lastActivity - b.lastActivity);
+
+        for (let i = 0; i < entriesToEvict && i < sortedEntries.length; i++) {
+          this.entries.delete(sortedEntries[i].key);
+        }
       }
     } finally {
       this.cleanupRunning = false;

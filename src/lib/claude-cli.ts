@@ -168,7 +168,7 @@ export async function executeClaudeQuery(
 
   // Validate query is not empty
   if (!options.query || options.query.trim().length === 0) {
-    throw new Error('Query cannot be empty');
+    throw new Error('Claude CLI query cannot be empty or whitespace-only');
   }
 
   // Determine if we need to use stdin for the query
@@ -348,6 +348,7 @@ export async function checkClaudeAvailable(): Promise<boolean> {
 
 /**
  * Get Claude CLI version
+ * Logs errors to help debug startup issues
  */
 export async function getClaudeVersion(): Promise<string | null> {
   try {
@@ -358,7 +359,8 @@ export async function getClaudeVersion(): Promise<string | null> {
     await proc.exited;
     const stdout = await new Response(proc.stdout).text();
     return stdout.trim();
-  } catch {
+  } catch (error) {
+    console.error('Failed to get Claude CLI version:', error instanceof Error ? error.message : error);
     return null;
   }
 }
