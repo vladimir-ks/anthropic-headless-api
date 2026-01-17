@@ -21,6 +21,7 @@ interface RateLimitEntry {
 export class RateLimiter {
   private entries = new Map<string, RateLimitEntry>();
   private config: Required<RateLimitConfig>;
+  private cleanupRunning = false;
 
   /** Cleanup interval handle */
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
@@ -149,25 +150,42 @@ export class RateLimiter {
 
   /**
    * Clean up old entries to prevent memory growth
+   * Prevents concurrent cleanup to avoid race conditions
    */
   private cleanup(): void {
-    const now = Date.now();
-    const windowStart = now - this.config.windowMs;
+    // Prevent concurrent cleanup runs
+    if (this.cleanupRunning) return;
+    this.cleanupRunning = true;
 
-    for (const [key, entry] of this.entries) {
-      // Remove timestamps outside window
-      entry.timestamps = entry.timestamps.filter((t) => t > windowStart);
+    try {
+      const now = Date.now();
+      const windowStart = now - this.config.windowMs;
 
-      // Remove entry if empty and not blocked
-      if (entry.timestamps.length === 0 && !entry.blocked) {
+      // Create snapshot of keys to avoid modification during iteration
+      const keysToDelete: string[] = [];
+
+      for (const [key, entry] of this.entries) {
+        // Remove timestamps outside window
+        entry.timestamps = entry.timestamps.filter((t) => t > windowStart);
+
+        // Mark entry for deletion if empty and not blocked
+        if (entry.timestamps.length === 0 && !entry.blocked) {
+          keysToDelete.push(key);
+        }
+
+        // Clear expired blocks
+        if (entry.blocked && entry.blockedUntil && now >= entry.blockedUntil) {
+          entry.blocked = false;
+          entry.blockedUntil = undefined;
+        }
+      }
+
+      // Delete entries after iteration
+      for (const key of keysToDelete) {
         this.entries.delete(key);
       }
-
-      // Clear expired blocks
-      if (entry.blocked && entry.blockedUntil && now >= entry.blockedUntil) {
-        entry.blocked = false;
-        entry.blockedUntil = undefined;
-      }
+    } finally {
+      this.cleanupRunning = false;
     }
   }
 

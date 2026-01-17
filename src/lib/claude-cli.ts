@@ -21,6 +21,53 @@ import type {
 const DEFAULT_TIMEOUT = 120_000; // 2 minutes
 const CLAUDE_BINARY = 'claude';
 
+// Security limits for JSON parameters passed to CLI
+const MAX_JSON_SIZE = 10_240; // 10KB
+const MAX_JSON_DEPTH = 10;
+
+/**
+ * Validate JSON object before passing to CLI to prevent injection attacks
+ * @throws Error if JSON is malicious or exceeds safety limits
+ */
+function validateJSONForCLI(obj: unknown, paramName: string): string {
+  // Check depth to prevent deeply nested attack payloads
+  function getDepth(o: unknown, currentDepth = 0): number {
+    if (currentDepth > MAX_JSON_DEPTH) {
+      throw new Error(`${paramName} exceeds maximum depth of ${MAX_JSON_DEPTH}`);
+    }
+    if (typeof o !== 'object' || o === null) return currentDepth;
+
+    const depths = Object.values(o).map(v => getDepth(v, currentDepth + 1));
+    return Math.max(currentDepth, ...depths);
+  }
+
+  getDepth(obj);
+
+  // Stringify and check size
+  const json = JSON.stringify(obj);
+  if (json.length > MAX_JSON_SIZE) {
+    throw new Error(`${paramName} exceeds maximum size of ${MAX_JSON_SIZE} bytes (got ${json.length})`);
+  }
+
+  // Check for suspicious patterns that could be shell injection attempts
+  const suspiciousPatterns = [
+    /\$\(/,  // Command substitution
+    /`/,     // Backticks
+    /&&/,    // Command chaining
+    /\|\|/,  // Command chaining
+    /;/,     // Command separator
+    />\s*&/, // Redirection
+  ];
+
+  for (const pattern of suspiciousPatterns) {
+    if (pattern.test(json)) {
+      throw new Error(`${paramName} contains suspicious pattern: ${pattern}`);
+    }
+  }
+
+  return json;
+}
+
 /**
  * Execute a query using Claude Code CLI in headless mode with JSON output
  */
@@ -85,7 +132,8 @@ export async function executeClaudeQuery(
 
   // === STRUCTURED OUTPUT ===
   if (options.jsonSchema) {
-    args.push('--json-schema', JSON.stringify(options.jsonSchema));
+    const validated = validateJSONForCLI(options.jsonSchema, 'jsonSchema');
+    args.push('--json-schema', validated);
   }
 
   // === AGENT CONTROL ===
@@ -93,7 +141,8 @@ export async function executeClaudeQuery(
     args.push('--agent', options.agent);
   }
   if (options.agents) {
-    args.push('--agents', JSON.stringify(options.agents));
+    const validated = validateJSONForCLI(options.agents, 'agents');
+    args.push('--agents', validated);
   }
 
   // === DIRECTORY ACCESS ===
@@ -115,6 +164,11 @@ export async function executeClaudeQuery(
   }
   if (options.betas && options.betas.length > 0) {
     args.push('--betas', ...options.betas);
+  }
+
+  // Validate query is not empty
+  if (!options.query || options.query.trim().length === 0) {
+    throw new Error('Query cannot be empty');
   }
 
   // Determine if we need to use stdin for the query

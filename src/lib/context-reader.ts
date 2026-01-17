@@ -5,11 +5,26 @@
  * similar to how Claude Code reads CLAUDE.md files.
  */
 
-import { readdir, stat } from 'fs/promises';
-import { join, basename } from 'path';
+import { readdir, stat, realpath } from 'fs/promises';
+import { join, basename, resolve, relative } from 'path';
 import type { ContextInfo } from '../types/api';
 
 const DEFAULT_CONTEXT_FILENAME = 'CONTEXT.md';
+
+/**
+ * Validate that a directory is safe to read (no path traversal)
+ * @throws Error if path is unsafe
+ */
+function validateSafePath(requestedPath: string, basePath: string): void {
+  const resolvedRequested = resolve(requestedPath);
+  const resolvedBase = resolve(basePath);
+
+  // Check if requested path is within or equal to base path
+  const relativePath = relative(resolvedBase, resolvedRequested);
+  if (relativePath.startsWith('..') || resolve(resolvedBase, relativePath) !== resolvedRequested) {
+    throw new Error(`Path traversal detected: ${requestedPath} is outside allowed base ${basePath}`);
+  }
+}
 
 /**
  * Read context information from a directory
@@ -18,6 +33,19 @@ export async function readContextFromDirectory(
   directory: string,
   contextFileName: string = DEFAULT_CONTEXT_FILENAME
 ): Promise<ContextInfo> {
+  // Validate directory path is safe (within current working directory or explicitly allowed)
+  const cwd = process.cwd();
+  try {
+    validateSafePath(directory, cwd);
+  } catch (error) {
+    console.error(`Path validation failed for ${directory}:`, error);
+    return {
+      contextMd: null,
+      directoryContents: [],
+      workingDirectory: directory,
+    };
+  }
+
   const result: ContextInfo = {
     contextMd: null,
     directoryContents: [],
@@ -25,8 +53,12 @@ export async function readContextFromDirectory(
   };
 
   try {
+    // Resolve symlinks to prevent symlink attacks
+    const realDir = await realpath(directory);
+    validateSafePath(realDir, cwd);
+
     // Read CONTEXT.md if it exists
-    const contextPath = join(directory, contextFileName);
+    const contextPath = join(realDir, contextFileName);
     const contextFile = Bun.file(contextPath);
 
     if (await contextFile.exists()) {
@@ -34,7 +66,7 @@ export async function readContextFromDirectory(
     }
 
     // List directory contents
-    result.directoryContents = await listDirectoryContents(directory);
+    result.directoryContents = await listDirectoryContents(realDir);
   } catch (error) {
     console.error(`Error reading context from ${directory}:`, error);
   }

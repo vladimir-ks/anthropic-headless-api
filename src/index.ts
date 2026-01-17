@@ -262,18 +262,19 @@ async function handleRequest(
         const stream = new ReadableStream({
           async start(controller) {
             const encoder = new TextEncoder();
+            let errorOccurred = false;
             try {
               for await (const chunk of handleStreamingChatCompletion(body, config)) {
                 // Check if this is an error response
                 if ('error' in chunk) {
                   const errorData = `data: ${JSON.stringify(chunk)}\n\n`;
                   controller.enqueue(encoder.encode(errorData));
+                  errorOccurred = true;
                   break;
                 }
                 const data = `data: ${JSON.stringify(chunk)}\n\n`;
                 controller.enqueue(encoder.encode(data));
               }
-              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
             } catch (streamError) {
               log.error('Stream error:', streamError);
               const errorChunk = {
@@ -284,7 +285,12 @@ async function handleRequest(
                 },
               };
               controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorChunk)}\n\n`));
+              errorOccurred = true;
             } finally {
+              // Always send [DONE] marker
+              if (!errorOccurred || true) { // Send even on error for proper stream termination
+                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+              }
               controller.close();
             }
           },

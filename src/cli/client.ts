@@ -329,6 +329,9 @@ async function main() {
     output: process.stdout,
   });
 
+  // Request queue to prevent concurrent message sends
+  let isProcessing = false;
+
   const prompt = () => {
     rl.question('You: ', async (input) => {
       const trimmed = input.trim();
@@ -345,18 +348,28 @@ async function main() {
         return;
       }
 
+      // Wait if another request is in progress
+      if (isProcessing) {
+        console.log('Please wait for the current request to complete...');
+        prompt();
+        return;
+      }
+
       // Send message
+      isProcessing = true;
       try {
         process.stdout.write('Claude: ');
         const result = await sendMessage(state, trimmed);
 
-        // Update state
+        // Update state (safe now that we have sequential processing)
         state.sessionId = result.sessionId;
         state.lastResponse = result.fullResponse;
 
         console.log(); // Extra newline for spacing
       } catch (error) {
         console.error(`\nError: ${error instanceof Error ? error.message : error}`);
+      } finally {
+        isProcessing = false;
       }
 
       prompt();
