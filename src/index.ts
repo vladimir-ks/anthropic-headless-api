@@ -204,17 +204,49 @@ async function handleRequest(
 
   // Chat completions
   if (path === '/v1/chat/completions' && method === 'POST') {
+    // Check request size limit (1MB default)
+    const MAX_REQUEST_SIZE = 1024 * 1024;
+    const contentLength = parseInt(req.headers.get('Content-Length') || '0', 10);
+    if (contentLength > MAX_REQUEST_SIZE) {
+      return jsonResponse(
+        {
+          error: {
+            message: `Request body too large. Maximum size is ${MAX_REQUEST_SIZE} bytes`,
+            type: 'invalid_request_error',
+            code: 'request_too_large',
+          },
+        },
+        413,
+        rateLimitHeaders(rateLimitResult)
+      );
+    }
+
     try {
       const body = (await req.json()) as ChatCompletionRequest;
 
       // Check for session_id in header (alternative to body)
       const headerSessionId = req.headers.get('X-Session-Id');
       if (headerSessionId && !body.session_id) {
+        // Validate UUID format
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(headerSessionId)) {
+          return jsonResponse(
+            {
+              error: {
+                message: 'X-Session-Id header must be a valid UUID',
+                type: 'invalid_request_error',
+                code: 'invalid_session_id',
+              },
+            },
+            400,
+            rateLimitHeaders(rateLimitResult)
+          );
+        }
         body.session_id = headerSessionId;
       }
 
       log.info(
-        `Chat completion: ${body.messages?.length || 0} messages, session=${body.session_id || 'new'}`
+        `Chat request: msgs=${body.messages?.length || 0}, model=${body.model || 'default'}, stream=${body.stream || false}, session=${body.session_id ? body.session_id.slice(0, 8) + '...' : 'new'}`
       );
 
       // Handle streaming
@@ -222,12 +254,31 @@ async function handleRequest(
         const stream = new ReadableStream({
           async start(controller) {
             const encoder = new TextEncoder();
-            for await (const chunk of handleStreamingChatCompletion(body, config)) {
-              const data = `data: ${JSON.stringify(chunk)}\n\n`;
-              controller.enqueue(encoder.encode(data));
+            try {
+              for await (const chunk of handleStreamingChatCompletion(body, config)) {
+                // Check if this is an error response
+                if ('error' in chunk) {
+                  const errorData = `data: ${JSON.stringify(chunk)}\n\n`;
+                  controller.enqueue(encoder.encode(errorData));
+                  break;
+                }
+                const data = `data: ${JSON.stringify(chunk)}\n\n`;
+                controller.enqueue(encoder.encode(data));
+              }
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            } catch (streamError) {
+              log.error('Stream error:', streamError);
+              const errorChunk = {
+                error: {
+                  message: streamError instanceof Error ? streamError.message : 'Stream error',
+                  type: 'server_error',
+                  code: 'stream_error',
+                },
+              };
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorChunk)}\n\n`));
+            } finally {
+              controller.close();
             }
-            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-            controller.close();
           },
         });
 
@@ -242,16 +293,39 @@ async function handleRequest(
         return jsonResponse(result, status, rateLimitHeaders(rateLimitResult));
       }
 
+      const meta = result.claude_metadata;
       log.info(
-        `Completed: session=${result.session_id}, cost=$${result.claude_metadata?.totalCostUsd?.toFixed(4) || 'N/A'}`
+        `Completed: session=${result.session_id?.slice(0, 8) || 'none'}..., tokens=${meta?.usage.inputTokens || 0}→${meta?.usage.outputTokens || 0}, cache=${meta?.usage.cacheReadTokens || 0}r/${meta?.usage.cacheCreationTokens || 0}w, cost=$${meta?.totalCostUsd?.toFixed(4) || 'N/A'}, time=${meta?.durationMs || 'N/A'}ms`
       );
 
       return jsonResponse(result, 200, rateLimitHeaders(rateLimitResult));
     } catch (error) {
       log.error('Request error:', error);
+
+      // Distinguish between JSON parse errors and other errors
+      if (error instanceof SyntaxError) {
+        return jsonResponse(
+          {
+            error: {
+              message: 'Invalid JSON in request body',
+              type: 'invalid_request_error',
+              code: 'json_parse_error',
+            },
+          },
+          400,
+          rateLimitHeaders(rateLimitResult)
+        );
+      }
+
+      // Sanitize error message to avoid leaking implementation details
+      const safeMessage =
+        error instanceof Error && !error.stack?.includes('node_modules')
+          ? error.message
+          : 'Internal server error';
+
       const apiError: APIError = {
         error: {
-          message: error instanceof Error ? error.message : 'Unknown error',
+          message: safeMessage,
           type: 'server_error',
           code: 'internal_error',
         },
