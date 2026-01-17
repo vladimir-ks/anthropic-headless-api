@@ -276,7 +276,12 @@ async function handleRequest(
                 controller.enqueue(encoder.encode(data));
               }
             } catch (streamError) {
-              log.error('Stream error:', streamError);
+              // Structured stream error logging
+              log.error('Stream error:', {
+                session: body.session_id?.slice(0, 8) || 'new',
+                model: body.model || 'default',
+                error: streamError instanceof Error ? streamError.message : String(streamError),
+              });
               const errorChunk = {
                 error: {
                   message: streamError instanceof Error ? streamError.message : 'Stream error',
@@ -314,7 +319,13 @@ async function handleRequest(
 
       return jsonResponse(result, 200, rateLimitHeaders(rateLimitResult));
     } catch (error) {
-      log.error('Request error:', error);
+      // Structured error logging with context
+      log.error('Request error:', {
+        path,
+        method,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
 
       // Distinguish between JSON parse errors and other errors
       if (error instanceof SyntaxError) {
