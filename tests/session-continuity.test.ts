@@ -4,26 +4,16 @@
  * Tests end-to-end session management and conversation continuity
  */
 
-import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
-import type { Server } from 'bun';
+/**
+ * NOTE: These integration tests require the server to be running
+ * Run the server first: bun run start
+ * Then run these tests: bun test tests/session-continuity.test.ts
+ */
 
-const TEST_PORT = 3457; // Different port to avoid conflicts
+import { describe, test, expect } from 'bun:test';
+
+const TEST_PORT = 3456; // Use default port
 const BASE_URL = `http://127.0.0.1:${TEST_PORT}`;
-
-let server: ReturnType<typeof Bun.serve> | null = null;
-
-beforeAll(async () => {
-  // Start test server
-  const { default: app } = await import('../src/index');
-  // Server is auto-started by index.ts, we'll use the existing one
-  // For tests, we assume the server is running on the test port
-});
-
-afterAll(() => {
-  if (server) {
-    server.stop();
-  }
-});
 
 describe('Session Continuity', () => {
   test('should create new session on first request', async () => {
