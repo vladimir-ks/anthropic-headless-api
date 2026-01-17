@@ -43,6 +43,14 @@ process.title = 'anthropic-headless-api';
 // =============================================================================
 
 function loadConfig(): ServerConfig {
+  // Validate log level with type guard
+  const validLogLevels = ['debug', 'info', 'warn', 'error'] as const;
+  const envLogLevel = process.env.LOG_LEVEL;
+  const logLevel: ServerConfig['logLevel'] =
+    envLogLevel && validLogLevels.includes(envLogLevel as typeof validLogLevels[number])
+      ? (envLogLevel as ServerConfig['logLevel'])
+      : 'info';
+
   return {
     port: parseInt(process.env.PORT || '3456', 10),
     host: process.env.HOST || '127.0.0.1',
@@ -50,7 +58,7 @@ function loadConfig(): ServerConfig {
     defaultSystemPrompt: process.env.DEFAULT_SYSTEM_PROMPT || '',
     contextFileName: process.env.CONTEXT_FILENAME || 'CONTEXT.md',
     enableCors: process.env.ENABLE_CORS !== 'false',
-    logLevel: (process.env.LOG_LEVEL as ServerConfig['logLevel']) || 'info',
+    logLevel,
     rateLimit: {
       maxRequests: parseInt(process.env.RATE_LIMIT_MAX || '60', 10),
       windowMs: 60_000, // 1 minute

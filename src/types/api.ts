@@ -300,20 +300,3 @@ export interface ContextInfo {
   workingDirectory: string;
 }
 
-// =============================================================================
-// DEPRECATED TYPES (kept for backwards compatibility)
-// =============================================================================
-
-/** @deprecated Use ClaudeExecuteOptions from ./claude.ts */
-export interface ClaudeCliOptions {
-  systemPrompt: string;
-  configDir?: string;
-  timeout?: number;
-}
-
-/** @deprecated Use ClaudeExecuteResult from ./claude.ts */
-export interface ClaudeCliResult {
-  success: boolean;
-  output: string;
-  error?: string;
-}

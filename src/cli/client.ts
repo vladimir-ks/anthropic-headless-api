@@ -172,39 +172,44 @@ async function handleStreamingResponse(response: Response): Promise<{
   // Collect all chunks for full response
   const allChunks: unknown[] = [];
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    const text = decoder.decode(value, { stream: true });
-    const lines = text.split('\n');
+      const text = decoder.decode(value, { stream: true });
+      const lines = text.split('\n');
 
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6).trim();
-        if (data === '[DONE]') continue;
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6).trim();
+          if (data === '[DONE]') continue;
 
-        try {
-          const chunk = JSON.parse(data);
-          allChunks.push(chunk);
-          lastChunk = chunk;
+          try {
+            const chunk = JSON.parse(data);
+            allChunks.push(chunk);
+            lastChunk = chunk;
 
-          // Extract content delta
-          const delta = chunk.choices?.[0]?.delta?.content;
-          if (delta) {
-            process.stdout.write(delta);
-            content += delta;
+            // Extract content delta
+            const delta = chunk.choices?.[0]?.delta?.content;
+            if (delta) {
+              process.stdout.write(delta);
+              content += delta;
+            }
+
+            // Extract session_id from final chunk
+            if (chunk.session_id) {
+              sessionId = chunk.session_id;
+            }
+          } catch {
+            // Ignore individual chunk parse errors (partial data)
           }
-
-          // Extract session_id from final chunk
-          if (chunk.session_id) {
-            sessionId = chunk.session_id;
-          }
-        } catch {
-          // Ignore parse errors
         }
       }
     }
+  } finally {
+    // Release the reader lock to free resources
+    reader.releaseLock();
   }
 
   // Print newline after streaming

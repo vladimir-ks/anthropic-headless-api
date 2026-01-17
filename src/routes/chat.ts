@@ -27,10 +27,10 @@ import {
 } from '../validation/schemas';
 
 /**
- * Generate a unique completion ID
+ * Generate a unique completion ID using cryptographic randomness
  */
 function generateCompletionId(): string {
-  return `chatcmpl-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  return `chatcmpl-${crypto.randomUUID()}`;
 }
 
 /**

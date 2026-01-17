@@ -131,8 +131,10 @@ export async function executeClaudeQuery(
     args.push(options.query);
   }
 
-  // Build environment
-  const env: Record<string, string> = { ...process.env } as Record<string, string>;
+  // Build environment (filter undefined values for type safety)
+  const env: Record<string, string> = Object.fromEntries(
+    Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)
+  );
   if (options.configDir) {
     env.CLAUDE_CONFIG_DIR = options.configDir;
   }

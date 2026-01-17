@@ -82,7 +82,13 @@ async function listDirectoryContents(
         }
       }
     } catch (error) {
-      // Directory not readable, skip
+      // Only silently skip permission errors; log unexpected errors
+      const isPermissionError =
+        error instanceof Error &&
+        (error.message.includes('EACCES') || error.message.includes('EPERM'));
+      if (!isPermissionError) {
+        console.error(`[context-reader] Error reading ${dir}:`, error);
+      }
     }
   }
 
