@@ -197,9 +197,10 @@ export async function executeClaudeQuery(
   const cwd = options.workingDirectory || process.cwd();
 
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let proc: ReturnType<typeof Bun.spawn> | null = null;
 
   try {
-    const proc = Bun.spawn([CLAUDE_BINARY, ...args], {
+    proc = Bun.spawn([CLAUDE_BINARY, ...args], {
       env,
       cwd,
       stdin: useStdin ? 'pipe' : undefined,
@@ -208,16 +209,24 @@ export async function executeClaudeQuery(
     });
 
     // Write query to stdin if needed (using Bun's FileSink API)
-    if (useStdin && proc.stdin) {
-      proc.stdin.write(options.query);
-      proc.stdin.end();
+    if (useStdin && proc.stdin && typeof proc.stdin !== 'number') {
+      try {
+        proc.stdin.write(options.query);
+        proc.stdin.end();
+      } catch (stdinError) {
+        // If stdin write fails, kill process and cleanup
+        proc.kill();
+        throw new Error(`Failed to write to stdin: ${stdinError instanceof Error ? stdinError.message : String(stdinError)}`);
+      }
     }
 
     // Set up timeout with proper cleanup
     const timeoutMs = options.timeout ?? DEFAULT_TIMEOUT;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => {
-        proc.kill();
+        if (proc) {
+          proc.kill();
+        }
         reject(new Error(`Claude CLI timed out after ${timeoutMs}ms`));
       }, timeoutMs);
     });
@@ -231,9 +240,13 @@ export async function executeClaudeQuery(
       timeoutId = null;
     }
 
-    // Read output
-    const stdout = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
+    // Read output (streams auto-close when process exits)
+    const stdout = proc.stdout && typeof proc.stdout !== 'number'
+      ? await new Response(proc.stdout).text()
+      : '';
+    const stderr = proc.stderr && typeof proc.stderr !== 'number'
+      ? await new Response(proc.stderr).text()
+      : '';
 
     if (exitCode !== 0) {
       return {
@@ -294,6 +307,16 @@ export async function executeClaudeQuery(
     // Clear timeout on error
     if (timeoutId) {
       clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+
+    // Ensure process is killed on error
+    if (proc) {
+      try {
+        proc.kill();
+      } catch {
+        // Ignore kill errors (process may already be dead)
+      }
     }
 
     const message = error instanceof Error ? error.message : String(error);

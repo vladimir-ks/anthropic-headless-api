@@ -211,7 +211,10 @@ describe('Empty Query Validation', () => {
 describe('Agent Parameter Validation', () => {
   test('should reject oversized agents parameter', async () => {
     const largeAgents = {
-      agent1: { config: 'x'.repeat(15000) },
+      agent1: {
+        description: 'Test agent',
+        prompt: 'x'.repeat(15000), // Large content
+      },
     };
 
     await expect(

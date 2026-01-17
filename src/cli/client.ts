@@ -38,10 +38,20 @@ function parseArgs(): Config {
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--port' && args[i + 1]) {
-      port = parseInt(args[i + 1], 10);
+      const parsedPort = parseInt(args[i + 1], 10);
+      if (isNaN(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
+        console.error(`Invalid port: ${args[i + 1]}. Must be between 1-65535.`);
+        process.exit(1);
+      }
+      port = parsedPort;
       i++;
     } else if (args[i] === '--host' && args[i + 1]) {
-      host = args[i + 1];
+      const hostValue = args[i + 1].trim();
+      if (!hostValue || hostValue.length === 0) {
+        console.error('Invalid host: cannot be empty');
+        process.exit(1);
+      }
+      host = hostValue;
       i++;
     } else if (args[i] === '--model' && args[i + 1]) {
       model = args[i + 1];

@@ -27,8 +27,20 @@ export type ValidatedChatMessage = z.infer<typeof ChatMessageSchema>;
 
 export const ChatCompletionRequestSchema = z
   .object({
-    // Model (ignored but accepted for compatibility)
-    model: z.string().optional(),
+    // Model: opus, sonnet, haiku, or full model name
+    model: z
+      .string()
+      .refine(
+        (m) => {
+          if (!m) return true; // Optional field
+          // Allow short names or full model names starting with "claude-"
+          return /^(opus|sonnet|haiku|claude-.+)$/i.test(m);
+        },
+        {
+          message: 'Model must be "opus", "sonnet", "haiku", or a full Claude model name (claude-*)',
+        }
+      )
+      .optional(),
 
     // Messages array - required
     messages: z

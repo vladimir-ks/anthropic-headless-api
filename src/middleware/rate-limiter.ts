@@ -115,15 +115,6 @@ export class RateLimiter {
   }
 
   /**
-   * Record a request (used after check returns allowed)
-   * This is called separately in case the request fails before processing
-   */
-  record(key: string): void {
-    // The check() method already records the timestamp
-    // This method exists for API clarity
-  }
-
-  /**
    * Get current status for a key
    */
   getStatus(key: string): RateLimitStatus {
