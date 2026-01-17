@@ -241,7 +241,11 @@ async function handleStreamingResponse(response: Response): Promise<{
 // COMMAND HANDLERS
 // =============================================================================
 
-function handleCommand(state: ClientState, input: string): boolean {
+function handleCommand(
+  state: ClientState,
+  input: string,
+  rl?: readline.Interface
+): boolean {
   const [cmd, ...args] = input.slice(1).split(' ');
 
   switch (cmd.toLowerCase()) {
@@ -277,6 +281,9 @@ function handleCommand(state: ClientState, input: string): boolean {
     case 'quit':
     case 'exit':
       console.log('Goodbye!');
+      if (rl) {
+        rl.close();
+      }
       process.exit(0);
 
     case 'help':
@@ -353,7 +360,7 @@ async function main() {
 
       // Handle commands
       if (trimmed.startsWith('/')) {
-        handleCommand(state, trimmed);
+        handleCommand(state, trimmed, rl);
         prompt();
         return;
       }

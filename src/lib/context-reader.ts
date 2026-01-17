@@ -172,6 +172,10 @@ export async function readContextFiles(
   for (const filename of filenames) {
     try {
       const filepath = join(directory, filename);
+
+      // Validate path to prevent traversal attacks
+      validateSafePath(filepath, directory);
+
       const file = Bun.file(filepath);
 
       if (await file.exists()) {

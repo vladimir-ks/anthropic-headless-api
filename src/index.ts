@@ -215,6 +215,18 @@ async function handleRequest(
     // Check request size limit (1MB default)
     const MAX_REQUEST_SIZE = 1024 * 1024;
     const contentLength = parseInt(req.headers.get('Content-Length') || '0', 10);
+    if (!Number.isFinite(contentLength) || contentLength < 0) {
+      return jsonResponse(
+        {
+          error: {
+            message: 'Invalid Content-Length header',
+            type: 'invalid_request_error',
+            code: 'invalid_content_length',
+          },
+        },
+        400
+      );
+    }
     if (contentLength > MAX_REQUEST_SIZE) {
       return jsonResponse(
         {
@@ -292,10 +304,8 @@ async function handleRequest(
               controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorChunk)}\n\n`));
               errorOccurred = true;
             } finally {
-              // Always send [DONE] marker
-              if (!errorOccurred || true) { // Send even on error for proper stream termination
-                controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-              }
+              // Always send [DONE] marker for proper stream termination
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
               controller.close();
             }
           },
