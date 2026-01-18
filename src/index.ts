@@ -1,39 +1,30 @@
 /**
- * anthropic-headless-api
+ * anthropic-headless-api - Intelligent AI Gateway
  *
- * OpenAI-compatible API server wrapping Claude Code CLI
+ * Multi-backend routing system with intelligent request distribution:
+ * - Claude CLI for tool-use requests (Read, Write, Bash)
+ * - Direct API pass-through for simple chat (OpenRouter, OpenAI, Gemini)
+ * - Process pool management to prevent resource exhaustion
+ * - Universal logging to SQLite + Langfuse
+ * - Fallback logic for graceful degradation
  *
  * Process name: anthropic-headless-api
- *
- * Usage:
- *   bun run src/index.ts
- *   bun run src/index.ts --port 3456
- *   CLAUDE_CONFIG_DIR=~/.claude-inst7 bun run src/index.ts
- *
- * Environment Variables:
- *   PORT              - Server port (default: 3456)
- *   HOST              - Server host (default: 127.0.0.1)
- *   CLAUDE_CONFIG_DIR - Claude configuration directory
- *   DEFAULT_SYSTEM_PROMPT - Default system prompt
- *   CONTEXT_FILENAME  - Context file name (default: CONTEXT.md)
- *   ENABLE_CORS       - Enable CORS (default: true)
- *   LOG_LEVEL         - Log level: debug, info, warn, error (default: info)
- *   RATE_LIMIT_MAX    - Max requests per minute (default: 60)
- *   RATE_LIMIT_ENABLED - Enable rate limiting (default: true)
  */
 
 import type { ServerConfig, ChatCompletionRequest, APIError } from './types/api';
-import {
-  handleChatCompletion,
-  handleStreamingChatCompletion,
-  isErrorResponse,
-} from './routes/chat';
-import { checkClaudeAvailable, getClaudeVersion } from './lib/claude-cli';
+import { BackendRegistry } from './lib/backend-registry';
+import { ProcessPoolRegistry } from './lib/process-pool';
+import { IntelligentRouter } from './lib/router';
+import { SQLiteLogger } from './lib/sqlite-logger';
 import {
   RateLimiter,
   getRateLimitKey,
   type RateLimitResult,
 } from './middleware/rate-limiter';
+import {
+  validateChatCompletionRequest,
+  formatValidationErrors,
+} from './validation/schemas';
 
 // Set process title for identification in activity monitors
 process.title = 'anthropic-headless-api';
@@ -64,6 +55,10 @@ function loadConfig(): ServerConfig {
       windowMs: 60_000, // 1 minute
       enabled: process.env.RATE_LIMIT_ENABLED !== 'false',
     },
+    // New gateway configuration
+    backendsConfig: process.env.BACKENDS_CONFIG || './config/backends.json',
+    databasePath: process.env.DATABASE_PATH || './logs/requests.db',
+    enableSQLiteLogging: process.env.ENABLE_SQLITE_LOGGING !== 'false',
   };
 }
 
@@ -75,7 +70,7 @@ const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
 
 function createLogger(config: ServerConfig) {
   const level = LOG_LEVELS[config.logLevel] ?? 1;
-  const prefix = '[anthropic-headless-api]';
+  const prefix = '[ai-gateway]';
 
   return {
     debug: (...args: unknown[]) =>
@@ -124,37 +119,25 @@ function jsonResponse(
   return new Response(JSON.stringify(data), { status, headers });
 }
 
-function sseResponse(
-  stream: ReadableStream,
-  extraHeaders: Record<string, string> = {}
-): Response {
-  const headers: Record<string, string> = {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-    ...corsHeaders(),
-    ...extraHeaders,
-  };
-
-  return new Response(stream, { headers });
-}
-
 // =============================================================================
 // REQUEST HANDLER
 // =============================================================================
 
-async function handleRequest(
-  req: Request,
-  config: ServerConfig,
-  log: ReturnType<typeof createLogger>,
-  rateLimiter: RateLimiter,
-  serverInfo: { version: string; claudeVersion: string | null; startTime: Date }
-): Promise<Response> {
+interface GatewayContext {
+  config: ServerConfig;
+  log: ReturnType<typeof createLogger>;
+  rateLimiter: RateLimiter;
+  router: IntelligentRouter;
+  sqliteLogger: SQLiteLogger;
+  serverInfo: { version: string; startTime: Date };
+}
+
+async function handleRequest(req: Request, ctx: GatewayContext): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname;
   const method = req.method;
 
-  log.debug(`${method} ${path}`);
+  ctx.log.debug(`${method} ${path}`);
 
   // CORS preflight
   if (method === 'OPTIONS') {
@@ -163,21 +146,31 @@ async function handleRequest(
 
   // Health check (bypass rate limit)
   if (path === '/health' || path === '/') {
+    const stats = ctx.router.getStats();
     return jsonResponse({
       status: 'ok',
-      version: serverInfo.version,
-      backend: 'claude-code-cli',
-      claude_version: serverInfo.claudeVersion,
-      uptime_seconds: Math.floor((Date.now() - serverInfo.startTime.getTime()) / 1000),
+      version: ctx.serverInfo.version,
+      backend: 'intelligent-gateway',
+      uptime_seconds: Math.floor((Date.now() - ctx.serverInfo.startTime.getTime()) / 1000),
+      routing: stats,
+    });
+  }
+
+  // Queue status endpoint
+  if (path === '/queue/status' && method === 'GET') {
+    const stats = ctx.router.getStats();
+    return jsonResponse({
+      processPool: stats.processPool,
+      backends: stats.backends,
     });
   }
 
   // Rate limit check for all other endpoints
   const rateLimitKey = getRateLimitKey(req);
-  const rateLimitResult = rateLimiter.check(rateLimitKey);
+  const rateLimitResult = ctx.rateLimiter.check(rateLimitKey);
 
   if (!rateLimitResult.allowed) {
-    log.warn(`Rate limited: ${rateLimitKey}`);
+    ctx.log.warn(`Rate limited: ${rateLimitKey}`);
     const error: APIError = {
       error: {
         message: 'Too many requests. Please slow down.',
@@ -198,10 +191,22 @@ async function handleRequest(
         object: 'list',
         data: [
           {
-            id: 'claude-code-cli',
+            id: 'claude-cli-default',
             object: 'model',
             created: Math.floor(Date.now() / 1000),
             owned_by: 'anthropic',
+          },
+          {
+            id: 'openrouter-glm',
+            object: 'model',
+            created: Math.floor(Date.now() / 1000),
+            owned_by: 'openrouter',
+          },
+          {
+            id: 'gemini-1.5-pro',
+            object: 'model',
+            created: Math.floor(Date.now() / 1000),
+            owned_by: 'google',
           },
         ],
       },
@@ -210,8 +215,16 @@ async function handleRequest(
     );
   }
 
-  // Chat completions
-  if (path === '/v1/chat/completions' && method === 'POST') {
+  // Extract backend from URL path: /v1/{backend}/chat/completions
+  const pathParts = path.split('/').filter(Boolean);
+  let explicitBackend: string | undefined;
+
+  if (pathParts.length >= 3 && pathParts[0] === 'v1' && pathParts[2] === 'chat') {
+    explicitBackend = pathParts[1];
+  }
+
+  // Chat completions (supports both /v1/chat/completions and /v1/{backend}/chat/completions)
+  if (path.match(/^\/v1\/([\w-]+\/)?chat\/completions$/) && method === 'POST') {
     // Check request size limit (1MB default)
     const MAX_REQUEST_SIZE = 1024 * 1024;
     const contentLength = parseInt(req.headers.get('Content-Length') || '0', 10);
@@ -246,8 +259,6 @@ async function handleRequest(
 
       // Check for session_id in header (alternative to body)
       const headerSessionId = req.headers.get('X-Session-Id');
-
-      // Validate header if present (even if body also has session_id)
       if (headerSessionId) {
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (!uuidRegex.test(headerSessionId)) {
@@ -263,79 +274,85 @@ async function handleRequest(
             rateLimitHeaders(rateLimitResult)
           );
         }
-
-        // Use header only if body doesn't have session_id
         if (!body.session_id) {
           body.session_id = headerSessionId;
         }
       }
 
-      log.info(
-        `Chat request: msgs=${body.messages?.length || 0}, model=${body.model || 'default'}, stream=${body.stream || false}, session=${body.session_id ? body.session_id.slice(0, 8) + '...' : 'new'}`
-      );
-
-      // Handle streaming
-      if (body.stream) {
-        const stream = new ReadableStream({
-          async start(controller) {
-            const encoder = new TextEncoder();
-            let errorOccurred = false;
-            try {
-              for await (const chunk of handleStreamingChatCompletion(body, config)) {
-                // Check if this is an error response
-                if ('error' in chunk) {
-                  const errorData = `data: ${JSON.stringify(chunk)}\n\n`;
-                  controller.enqueue(encoder.encode(errorData));
-                  errorOccurred = true;
-                  break;
-                }
-                const data = `data: ${JSON.stringify(chunk)}\n\n`;
-                controller.enqueue(encoder.encode(data));
-              }
-            } catch (streamError) {
-              // Structured stream error logging
-              log.error('Stream error:', {
-                session: body.session_id?.slice(0, 8) || 'new',
-                model: body.model || 'default',
-                error: streamError instanceof Error ? streamError.message : String(streamError),
-              });
-              const errorChunk = {
-                error: {
-                  message: streamError instanceof Error ? streamError.message : 'Stream error',
-                  type: 'server_error',
-                  code: 'stream_error',
-                },
-              };
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorChunk)}\n\n`));
-              errorOccurred = true;
-            } finally {
-              // Always send [DONE] marker for proper stream termination
-              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-              controller.close();
-            }
+      // Validate request
+      const validation = validateChatCompletionRequest(body);
+      if (!validation.success) {
+        return jsonResponse(
+          {
+            error: {
+              message: formatValidationErrors(validation.errors || []),
+              type: 'invalid_request_error',
+              code: 'validation_error',
+              details: { errors: validation.errors },
+            },
           },
-        });
-
-        return sseResponse(stream, rateLimitHeaders(rateLimitResult));
+          400,
+          rateLimitHeaders(rateLimitResult)
+        );
       }
 
-      // Non-streaming
-      const result = await handleChatCompletion(body, config);
+      // Use explicit backend from URL, or body field, or let router decide
+      const preferredBackend = explicitBackend || body.backend;
 
-      if (isErrorResponse(result)) {
-        const status = result.error.type === 'invalid_request_error' ? 400 : 500;
-        return jsonResponse(result, status, rateLimitHeaders(rateLimitResult));
-      }
-
-      const meta = result.claude_metadata;
-      log.info(
-        `Completed: session=${result.session_id?.slice(0, 8) || 'none'}..., tokens=${meta?.usage.inputTokens || 0}→${meta?.usage.outputTokens || 0}, cache=${meta?.usage.cacheReadTokens || 0}r/${meta?.usage.cacheCreationTokens || 0}w, cost=$${meta?.totalCostUsd?.toFixed(4) || 'N/A'}, time=${meta?.durationMs || 'N/A'}ms`
+      ctx.log.info(
+        `Request: msgs=${body.messages?.length || 0}, backend=${preferredBackend || 'auto'}, tools=${body.tools?.length || 0}, session=${body.session_id?.slice(0, 8) || 'new'}...`
       );
 
-      return jsonResponse(result, 200, rateLimitHeaders(rateLimitResult));
+      const startTime = Date.now();
+
+      // Route request
+      const decision = await ctx.router.route(body, {
+        explicitBackend: preferredBackend,
+        allowFallback: true,
+      });
+
+      ctx.log.debug(`Routing decision: ${decision.backend.name} - ${decision.reason}`);
+
+      // Execute request
+      let response;
+      let error: string | undefined;
+
+      try {
+        response = await ctx.router.execute(body, decision);
+      } catch (execError) {
+        error = execError instanceof Error ? execError.message : String(execError);
+        ctx.log.error(`Execution error: ${error}`);
+
+        // Log failed request
+        const duration = Date.now() - startTime;
+        await ctx.sqliteLogger.log(body, null, decision, duration, undefined, error);
+
+        return jsonResponse(
+          {
+            error: {
+              message: error,
+              type: 'server_error',
+              code: 'execution_error',
+            },
+          },
+          500,
+          rateLimitHeaders(rateLimitResult)
+        );
+      }
+
+      const duration = Date.now() - startTime;
+
+      // Log successful request
+      await ctx.sqliteLogger.log(body, response, decision, duration);
+
+      ctx.log.info(
+        `Completed: backend=${decision.backend.name}, session=${response.session_id?.slice(0, 8) || 'none'}..., tokens=${response.usage?.prompt_tokens || 0}→${response.usage?.completion_tokens || 0}, cost=$${decision.estimatedCost.toFixed(4)}, time=${duration}ms${decision.isFallback ? ' [DEGRADED]' : ''}`
+      );
+
+      return jsonResponse(response, 200, rateLimitHeaders(rateLimitResult));
     } catch (error) {
       // Structured error logging with context
-      log.error('Request error:', {
+      ctx.log.error('Request error:', {
         path,
         method,
         error: error instanceof Error ? error.message : String(error),
@@ -389,7 +406,7 @@ async function handleRequest(
 }
 
 // =============================================================================
-// SERVER
+// SERVER INITIALIZATION
 // =============================================================================
 
 async function main() {
@@ -397,19 +414,35 @@ async function main() {
   const log = createLogger(config);
   const startTime = new Date();
 
-  log.info('Starting anthropic-headless-api...');
+  log.info('Starting Intelligent AI Gateway...');
+  log.info('='.repeat(60));
 
-  // Check Claude CLI availability
-  log.info('Checking Claude Code CLI...');
-  const claudeAvailable = await checkClaudeAvailable();
-  if (!claudeAvailable) {
-    log.error('Claude Code CLI not found or not authenticated.');
-    log.error('Please ensure claude is installed and you are logged in.');
-    process.exit(1);
+  // Initialize backend registry
+  log.info(`Loading backends from: ${config.backendsConfig}`);
+  const backendRegistry = new BackendRegistry(config.backendsConfig!);
+
+  // Initialize process pool registry
+  const processPoolRegistry = new ProcessPoolRegistry();
+
+  // Register Claude CLI backends with process pools
+  for (const backend of backendRegistry.getToolBackends()) {
+    const backendConfig = backend.getConfig();
+    processPoolRegistry.registerBackend(
+      backend,
+      backendConfig.maxConcurrent || 10,
+      backendConfig.queueSize || 50
+    );
   }
 
-  const claudeVersion = await getClaudeVersion();
-  log.info(`Claude Code CLI: ${claudeVersion || 'available'}`);
+  // Initialize intelligent router
+  const router = new IntelligentRouter(backendRegistry, processPoolRegistry);
+  log.info('Intelligent router initialized');
+
+  // Initialize SQLite logger
+  const sqliteLogger = new SQLiteLogger(
+    config.databasePath!,
+    config.enableSQLiteLogging
+  );
 
   // Initialize rate limiter
   const rateLimiter = new RateLimiter(
@@ -419,18 +452,31 @@ async function main() {
     `Rate limiting: ${config.rateLimit?.enabled !== false ? 'enabled' : 'disabled'} (${config.rateLimit?.maxRequests || 60}/min)`
   );
 
-  // Server info for health endpoint
-  const serverInfo = {
-    version: '0.2.0',
-    claudeVersion,
-    startTime,
+  // Run backend health checks
+  log.info('Running backend health checks...');
+  const healthResults = await backendRegistry.healthCheck();
+  for (const [name, healthy] of healthResults.entries()) {
+    log.info(`  ${name}: ${healthy ? '✓ healthy' : '✗ unavailable'}`);
+  }
+
+  // Prepare gateway context
+  const ctx: GatewayContext = {
+    config,
+    log,
+    rateLimiter,
+    router,
+    sqliteLogger,
+    serverInfo: {
+      version: '1.0.0',
+      startTime,
+    },
   };
 
   // Start server
   const server = Bun.serve({
     port: config.port,
     hostname: config.host,
-    fetch: (req) => handleRequest(req, config, log, rateLimiter, serverInfo),
+    fetch: (req) => handleRequest(req, ctx),
   });
 
   // Graceful shutdown handler
@@ -443,6 +489,9 @@ async function main() {
     // Stop rate limiter cleanup interval
     rateLimiter.stop();
 
+    // Close SQLite connection
+    sqliteLogger.close();
+
     log.info('Server stopped.');
     process.exit(0);
   };
@@ -453,27 +502,31 @@ async function main() {
 
   // Log startup complete
   log.info('='.repeat(60));
-  log.info(`anthropic-headless-api v${serverInfo.version} started`);
+  log.info(`Intelligent AI Gateway v${ctx.serverInfo.version} started`);
   log.info(`Listening on http://${config.host}:${config.port}`);
-  log.info(`Context file: ${config.contextFileName}`);
-  if (config.claudeConfigDir) {
-    log.info(`Claude config: ${config.claudeConfigDir}`);
-  }
   log.info('='.repeat(60));
   log.info('');
   log.info('Endpoints:');
-  log.info('  POST /v1/chat/completions  - Chat completions (OpenAI-compatible)');
-  log.info('  GET  /v1/models            - List models');
-  log.info('  GET  /health               - Health check');
+  log.info('  POST /v1/chat/completions              - Auto-routed chat (smart backend)');
+  log.info('  POST /v1/{backend}/chat/completions    - Explicit backend routing');
+  log.info('  GET  /v1/models                        - List available models');
+  log.info('  GET  /queue/status                     - Process pool statistics');
+  log.info('  GET  /health                           - Health check + routing stats');
   log.info('');
-  log.info('Session continuity:');
-  log.info('  - Response includes session_id');
-  log.info('  - Pass session_id in next request to continue conversation');
-  log.info('  - Or use X-Session-Id header');
+  log.info('Available backends:');
+  for (const backend of backendRegistry.getAllBackends()) {
+    const config = backend.getConfig();
+    log.info(`  - ${backend.name} (${backend.type}${backend.supportsTools ? ' + tools' : ''})`);
+  }
+  log.info('');
+  log.info('Routing modes:');
+  log.info('  - URL path: /v1/{backend-name}/chat/completions');
+  log.info('  - Body field: {"backend": "backend-name", ...}');
+  log.info('  - Auto-routing: Let gateway decide based on request characteristics');
   log.info('');
 }
 
 main().catch((err) => {
-  console.error('[anthropic-headless-api] Fatal error:', err);
+  console.error('[ai-gateway] Fatal error:', err);
   process.exit(1);
 });

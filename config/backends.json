@@ -1,0 +1,94 @@
+{
+  "backends": [
+    {
+      "name": "claude-cli-default",
+      "type": "claude-cli",
+      "configDir": "~/.claude-inst2",
+      "maxConcurrent": 10,
+      "queueSize": 50,
+      "timeout": 120000,
+      "costPerRequest": 0.0,
+      "supportsTools": true,
+      "description": "Default Claude CLI instance with full tool support"
+    },
+    {
+      "name": "claude-cli-kimi",
+      "type": "claude-cli",
+      "configDir": "~/.claude-inst10",
+      "maxConcurrent": 5,
+      "queueSize": 25,
+      "timeout": 120000,
+      "costPerRequest": 0.0,
+      "supportsTools": true,
+      "provider": "moonshot",
+      "description": "Kimi K2 instance via Moonshot API"
+    },
+    {
+      "name": "claude-cli-or",
+      "type": "claude-cli",
+      "configDir": "~/.claude-inst20",
+      "maxConcurrent": 5,
+      "queueSize": 25,
+      "timeout": 120000,
+      "costPerRequest": 0.0,
+      "supportsTools": true,
+      "provider": "openrouter",
+      "description": "OpenRouter instance via Claude CLI"
+    },
+    {
+      "name": "openrouter-glm",
+      "type": "api",
+      "provider": "openrouter",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "model": "z-ai/glm-4.7",
+      "authTokenEnv": "OPENROUTER_API_KEY",
+      "costPerRequest": 0.001,
+      "supportsTools": false,
+      "description": "OpenRouter GLM-4.7 (cost-effective)"
+    },
+    {
+      "name": "anthropic-api-sonnet",
+      "type": "api",
+      "provider": "anthropic",
+      "baseUrl": "https://api.anthropic.com/v1",
+      "model": "claude-3-5-sonnet-20241022",
+      "authTokenEnv": "ANTHROPIC_API_KEY",
+      "costPerRequest": 0.003,
+      "supportsTools": false,
+      "description": "Direct Anthropic API (Claude 3.5 Sonnet)"
+    },
+    {
+      "name": "openai-gpt4",
+      "type": "api",
+      "provider": "openai",
+      "baseUrl": "https://api.openai.com/v1",
+      "model": "gpt-4-turbo-preview",
+      "authTokenEnv": "OPENAI_API_KEY",
+      "costPerRequest": 0.01,
+      "supportsTools": false,
+      "description": "OpenAI GPT-4 Turbo"
+    },
+    {
+      "name": "gemini-1.5-pro",
+      "type": "api",
+      "provider": "google",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+      "model": "gemini-1.5-pro-latest",
+      "authTokenEnv": "GOOGLE_API_KEY",
+      "costPerRequest": 0.002,
+      "supportsTools": false,
+      "maxTokens": 2000000,
+      "description": "Google Gemini 1.5 Pro (2M context)"
+    }
+  ],
+  "routing": {
+    "defaultBackend": "claude-cli-default",
+    "preferCheapest": true,
+    "fallbackChain": [
+      "claude-cli-default",
+      "openrouter-glm",
+      "anthropic-api-sonnet",
+      "gemini-1.5-pro"
+    ]
+  }
+}

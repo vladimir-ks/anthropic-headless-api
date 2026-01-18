@@ -22,6 +22,9 @@ export interface ChatCompletionRequest {
   /** Model identifier: opus, sonnet, haiku, or full model name */
   model?: string;
 
+  /** Backend to use for this request (optional - allows explicit backend selection) */
+  backend?: string;
+
   /** Array of messages in the conversation */
   messages: ChatMessage[];
 
@@ -31,11 +34,17 @@ export interface ChatCompletionRequest {
   /** Temperature for response randomness */
   temperature?: number;
 
+  /** Top-p sampling parameter */
+  top_p?: number;
+
   /** Enable streaming responses */
   stream?: boolean;
 
   /** System prompt override (optional - uses CONTEXT.md if not provided) */
   system?: string;
+
+  /** System prompt (alternative field name for compatibility) */
+  system_prompt?: string;
 
   /** Working directory for context (defaults to cwd) */
   working_directory?: string;
@@ -279,6 +288,11 @@ export interface ServerConfig {
 
   /** Rate limiting configuration */
   rateLimit?: RateLimitConfig;
+
+  /** Gateway configuration */
+  backendsConfig?: string;
+  databasePath?: string;
+  enableSQLiteLogging?: boolean;
 }
 
 export interface RateLimitConfig {
