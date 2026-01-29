@@ -1,0 +1,138 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Auth Pool Configuration",
+  "description": "Configuration for Claude Authentication Pool Manager",
+  "type": "object",
+  "required": ["subscriptions", "maxClientsPerSubscription", "weeklyBudgetThreshold"],
+  "properties": {
+    "subscriptions": {
+      "type": "array",
+      "description": "List of Claude Pro subscriptions",
+      "items": {
+        "type": "object",
+        "required": ["id", "email", "type", "configDir", "weeklyBudget"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique subscription identifier"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "Subscription email address"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["claude-pro", "claude-max", "api"],
+            "description": "Subscription type"
+          },
+          "configDir": {
+            "type": "string",
+            "description": "Claude CLI config directory path"
+          },
+          "weeklyBudget": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Weekly budget in USD (default: $456 for Claude Pro)"
+          },
+          "maxClientsPerSub": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "description": "Max clients per subscription (overrides global default)"
+          }
+        }
+      }
+    },
+    "maxClientsPerSubscription": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Default max clients per subscription"
+    },
+    "weeklyBudgetThreshold": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Weekly budget threshold (0.85 = 85%)"
+    },
+    "fallbackWhenExhausted": {
+      "type": "boolean",
+      "description": "Use fallback API when all subscriptions exhausted"
+    },
+    "rebalancing": {
+      "type": "object",
+      "required": ["enabled", "intervalSeconds", "costGapThreshold", "maxClientsToMovePerCycle"],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable periodic rebalancing"
+        },
+        "intervalSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "description": "Rebalancing interval in seconds"
+        },
+        "costGapThreshold": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Cost gap threshold in USD to trigger rebalancing"
+        },
+        "maxClientsToMovePerCycle": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Max clients to move per rebalancing cycle"
+        }
+      }
+    },
+    "notifications": {
+      "type": "object",
+      "required": ["rules"],
+      "properties": {
+        "rules": {
+          "type": "array",
+          "description": "Notification rules",
+          "items": {
+            "type": "object",
+            "required": ["type", "channels", "enabled"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["usage_threshold", "failover", "rotation", "limit_reached"],
+                "description": "Notification type"
+              },
+              "threshold": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Threshold for usage_threshold type (e.g., 0.8 = 80%)"
+              },
+              "channels": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["webhook", "log", "sentry"]
+                },
+                "description": "Notification channels"
+              },
+              "enabled": {
+                "type": "boolean",
+                "description": "Enable this rule"
+              }
+            }
+          }
+        },
+        "webhookUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Webhook URL for notifications"
+        },
+        "slackWebhook": {
+          "type": "string",
+          "format": "uri",
+          "description": "Slack webhook URL (optional)"
+        }
+      }
+    }
+  }
+}

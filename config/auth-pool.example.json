@@ -1,0 +1,65 @@
+{
+  "$schema": "./auth-pool.schema.json",
+  "subscriptions": [
+    {
+      "id": "sub1",
+      "email": "user1@example.com",
+      "type": "claude-pro",
+      "configDir": "~/.claude-sub1",
+      "weeklyBudget": 456,
+      "maxClientsPerSub": 15
+    },
+    {
+      "id": "sub2",
+      "email": "user2@example.com",
+      "type": "claude-pro",
+      "configDir": "~/.claude-sub2",
+      "weeklyBudget": 456,
+      "maxClientsPerSub": 15
+    },
+    {
+      "id": "sub3",
+      "email": "user3@example.com",
+      "type": "claude-pro",
+      "configDir": "~/.claude-sub3",
+      "weeklyBudget": 456,
+      "maxClientsPerSub": 15
+    }
+  ],
+  "maxClientsPerSubscription": 15,
+  "weeklyBudgetThreshold": 0.85,
+  "fallbackWhenExhausted": true,
+  "rebalancing": {
+    "enabled": true,
+    "intervalSeconds": 300,
+    "costGapThreshold": 5.0,
+    "maxClientsToMovePerCycle": 3
+  },
+  "notifications": {
+    "rules": [
+      {
+        "type": "usage_threshold",
+        "threshold": 0.8,
+        "channels": ["webhook", "log"],
+        "enabled": true
+      },
+      {
+        "type": "usage_threshold",
+        "threshold": 0.9,
+        "channels": ["webhook", "log"],
+        "enabled": true
+      },
+      {
+        "type": "failover",
+        "channels": ["webhook"],
+        "enabled": true
+      },
+      {
+        "type": "rotation",
+        "channels": ["log"],
+        "enabled": true
+      }
+    ],
+    "webhookUrl": "https://your-webhook-endpoint.com/notify"
+  }
+}
