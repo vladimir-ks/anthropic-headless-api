@@ -14,6 +14,7 @@ const logger = createModuleLogger('SubscriptionManager');
 
 export class SubscriptionManager {
   private cache: Map<string, Subscription> = new Map();
+  private readonly maxCacheSize: number = 100; // Prevent unbounded growth
 
   constructor(
     private storage: StorageInterface,
@@ -37,12 +38,14 @@ export class SubscriptionManager {
         // New subscription - initialize
         await this.storage.set(`subscription:${subConfig.id}`, subscription);
         this.cache.set(subConfig.id, subscription);
+        this.evictOldestIfNeeded();
         logger.info('Created subscription', { subscriptionId: subConfig.id });
       } else {
         // Existing - merge config updates
         const merged = this.mergeSubscriptionConfig(existing, subConfig);
         await this.storage.set(`subscription:${subConfig.id}`, merged);
         this.cache.set(subConfig.id, merged);
+        this.evictOldestIfNeeded();
         logger.info('Updated subscription', { subscriptionId: subConfig.id });
       }
     }
@@ -65,6 +68,7 @@ export class SubscriptionManager {
 
     if (subscription) {
       this.cache.set(id, subscription);
+      this.evictOldestIfNeeded();
     }
 
     return subscription;
@@ -108,6 +112,7 @@ export class SubscriptionManager {
 
     // Update cache
     this.cache.set(id, validated);
+    this.evictOldestIfNeeded();
 
     logger.debug('Updated subscription', { subscriptionId: id });
   }
@@ -208,5 +213,33 @@ export class SubscriptionManager {
     }
 
     return true;
+  }
+
+  /**
+   * Evict oldest cache entries if cache exceeds maxCacheSize
+   * Note: Subscriptions are typically small (3-10), so eviction rarely needed
+   */
+  private evictOldestIfNeeded(): void {
+    if (this.cache.size <= this.maxCacheSize) {
+      return;
+    }
+
+    logger.warn('Subscription cache exceeds expected size', {
+      size: this.cache.size,
+      max: this.maxCacheSize,
+    });
+
+    // Evict oldest 10% when limit exceeded
+    const evictCount = Math.ceil(this.maxCacheSize * 0.1);
+    const keysToEvict = Array.from(this.cache.keys()).slice(0, evictCount);
+
+    for (const key of keysToEvict) {
+      this.cache.delete(key);
+    }
+
+    logger.debug('Cache eviction', {
+      evicted: evictCount,
+      remaining: this.cache.size,
+    });
   }
 }

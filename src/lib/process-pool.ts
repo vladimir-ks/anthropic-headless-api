@@ -31,6 +31,7 @@ export class ClaudeProcessPool {
   private readonly maxConcurrent: number;
   private readonly maxQueue: number;
   private readonly queue: QueuedRequest[] = [];
+  private processingNext: boolean = false; // Prevents race condition in processNext()
 
   // Statistics
   private totalProcessed: number = 0;
@@ -103,22 +104,34 @@ export class ClaudeProcessPool {
 
   /**
    * Process the next queued request if slot available
+   * Uses processingNext flag to prevent race condition when multiple
+   * requests complete simultaneously and call this method
    */
   private processNext(): void {
-    if (this.activeCount >= this.maxConcurrent || this.queue.length === 0) {
+    // Prevent re-entrant calls that could exceed maxConcurrent
+    if (this.processingNext) {
       return;
     }
 
-    const queued = this.queue.shift();
-    if (!queued) return;
+    this.processingNext = true;
 
-    // Execute the queued request
-    this.executeImmediate(queued.request)
-      .then(queued.resolve)
-      .catch((error) => {
-        this.totalFailed++;
-        queued.reject(error);
-      });
+    try {
+      // Process all available slots
+      while (this.activeCount < this.maxConcurrent && this.queue.length > 0) {
+        const queued = this.queue.shift();
+        if (!queued) break;
+
+        // Execute the queued request
+        this.executeImmediate(queued.request)
+          .then(queued.resolve)
+          .catch((error) => {
+            this.totalFailed++;
+            queued.reject(error);
+          });
+      }
+    } finally {
+      this.processingNext = false;
+    }
   }
 
   /**

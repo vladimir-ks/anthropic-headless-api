@@ -21,6 +21,7 @@ interface CreateSessionInput {
 
 export class SessionStore {
   private cache: Map<string, ClientSession> = new Map();
+  private readonly maxCacheSize: number = 1000; // Prevent unbounded growth
 
   constructor(private storage: StorageInterface) {}
 
@@ -65,6 +66,7 @@ export class SessionStore {
 
     // Cache
     this.cache.set(input.clientId, validated);
+    this.evictOldestIfNeeded();
 
     logger.debug('Created session', {
       clientId: input.clientId,
@@ -89,6 +91,7 @@ export class SessionStore {
 
     if (session) {
       this.cache.set(clientId, session);
+      this.evictOldestIfNeeded();
     }
 
     return session;
@@ -120,6 +123,7 @@ export class SessionStore {
 
     // Update cache
     this.cache.set(clientId, validated);
+    this.evictOldestIfNeeded();
   }
 
   /**
@@ -246,6 +250,29 @@ export class SessionStore {
       clientId,
       fromSubscription: oldSubscriptionId,
       toSubscription: newSubscriptionId,
+    });
+  }
+
+  /**
+   * Evict oldest cache entries if cache exceeds maxCacheSize
+   * Uses Map insertion order (FIFO eviction)
+   */
+  private evictOldestIfNeeded(): void {
+    if (this.cache.size <= this.maxCacheSize) {
+      return;
+    }
+
+    // Evict oldest 10% when limit exceeded
+    const evictCount = Math.ceil(this.maxCacheSize * 0.1);
+    const keysToEvict = Array.from(this.cache.keys()).slice(0, evictCount);
+
+    for (const key of keysToEvict) {
+      this.cache.delete(key);
+    }
+
+    logger.debug('Cache eviction', {
+      evicted: evictCount,
+      remaining: this.cache.size,
     });
   }
 }
