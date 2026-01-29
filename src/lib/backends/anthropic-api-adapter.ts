@@ -90,17 +90,31 @@ export class AnthropicAPIAdapter extends BaseAdapter {
       body.system = systemMessage.content;
     }
 
-    // Make API request
+    // Make API request with timeout
     const url = `${this.config.baseUrl}/messages`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': this.apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify(body),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout
+
+    try {
+      var response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': this.apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      clearTimeout(timeout);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Anthropic API request timeout (60s)');
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -148,22 +162,32 @@ export class AnthropicAPIAdapter extends BaseAdapter {
     try {
       // Health check: verify API key is valid
       const url = `${this.config.baseUrl}/messages`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': this.apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: this.config.model!,
-          messages: [{ role: 'user', content: 'test' }],
-          max_tokens: 1,
-        }),
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout for health check
 
-      // Only 200 indicates backend is available and healthy
-      return response.status === 200;
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': this.apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: this.config.model!,
+            messages: [{ role: 'user', content: 'test' }],
+            max_tokens: 1,
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+        // Only 200 indicates backend is available and healthy
+        return response.status === 200;
+      } catch {
+        clearTimeout(timeout);
+        return false;
+      }
     } catch {
       return false;
     }

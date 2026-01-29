@@ -52,16 +52,30 @@ export class OpenAIAdapter extends BaseAdapter {
       top_p: request.top_p,
     };
 
-    // Make API request
+    // Make API request with timeout
     const url = `${this.config.baseUrl}/chat/completions`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout
+
+    try {
+      var response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      clearTimeout(timeout);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('OpenAI API request timeout (60s)');
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -86,12 +100,22 @@ export class OpenAIAdapter extends BaseAdapter {
     try {
       // Simple health check: try to fetch models endpoint
       const url = `${this.config.baseUrl}/models`;
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-        },
-      });
-      return response.ok;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+      try {
+        const response = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+          },
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        return response.ok;
+      } catch {
+        clearTimeout(timeout);
+        return false;
+      }
     } catch {
       return false;
     }
