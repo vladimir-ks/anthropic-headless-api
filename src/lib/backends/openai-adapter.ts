@@ -66,11 +66,18 @@ export class OpenAIAdapter extends BaseAdapter {
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(
-        `OpenAI API error (${response.status}): ${errorText}`
+        `OpenAI API error (${response.status}): ${errorText.slice(0, 500)}`
       );
     }
 
-    const data = (await response.json()) as ChatCompletionResponse;
+    let data: ChatCompletionResponse;
+    try {
+      data = (await response.json()) as ChatCompletionResponse;
+    } catch (parseError) {
+      throw new Error(
+        `Failed to parse OpenAI API response: ${parseError instanceof Error ? parseError.message : 'Invalid JSON'}`
+      );
+    }
 
     return data;
   }

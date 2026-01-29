@@ -87,6 +87,7 @@ export class RateLimiter {
     // Check if limit exceeded
     if (entry.timestamps.length >= this.config.maxRequests) {
       // Block for remainder of window
+      // Safe because we know length >= maxRequests > 0
       const oldestInWindow = Math.min(...entry.timestamps);
       entry.blocked = true;
       entry.blockedUntil = oldestInWindow + this.config.windowMs;

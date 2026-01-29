@@ -219,7 +219,9 @@ async function handleStreamingResponse(response: Response): Promise<{
     }
   } finally {
     // Release the reader lock to free resources
-    reader.releaseLock();
+    if (reader) {
+      reader.releaseLock();
+    }
   }
 
   // Print newline after streaming

@@ -68,11 +68,18 @@ export class OpenRouterAdapter extends BaseAdapter {
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(
-        `OpenRouter API error (${response.status}): ${errorText}`
+        `OpenRouter API error (${response.status}): ${errorText.slice(0, 500)}`
       );
     }
 
-    const data = (await response.json()) as ChatCompletionResponse;
+    let data: ChatCompletionResponse;
+    try {
+      data = (await response.json()) as ChatCompletionResponse;
+    } catch (parseError) {
+      throw new Error(
+        `Failed to parse OpenRouter API response: ${parseError instanceof Error ? parseError.message : 'Invalid JSON'}`
+      );
+    }
 
     // OpenRouter responses are already OpenAI-compatible
     return data;

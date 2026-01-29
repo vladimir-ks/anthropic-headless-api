@@ -105,11 +105,18 @@ export class AnthropicAPIAdapter extends BaseAdapter {
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(
-        `Anthropic API error (${response.status}): ${errorText}`
+        `Anthropic API error (${response.status}): ${errorText.slice(0, 500)}`
       );
     }
 
-    const data = (await response.json()) as AnthropicResponse;
+    let data: AnthropicResponse;
+    try {
+      data = (await response.json()) as AnthropicResponse;
+    } catch (parseError) {
+      throw new Error(
+        `Failed to parse Anthropic API response: ${parseError instanceof Error ? parseError.message : 'Invalid JSON'}`
+      );
+    }
 
     // Transform Anthropic format to OpenAI format
     const openAIResponse: ChatCompletionResponse = {
@@ -155,8 +162,8 @@ export class AnthropicAPIAdapter extends BaseAdapter {
         }),
       });
 
-      // Consider both 200 (success) and 400 (bad request but API is reachable) as available
-      return response.status === 200 || response.status === 400;
+      // Only 200 indicates backend is available and healthy
+      return response.status === 200;
     } catch {
       return false;
     }

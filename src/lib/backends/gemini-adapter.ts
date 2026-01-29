@@ -98,12 +98,13 @@ export class GeminiAdapter extends BaseAdapter {
       },
     };
 
-    // Make API request
-    const url = `${this.config.baseUrl}/models/${this.config.model}:generateContent?key=${this.apiKey}`;
+    // Make API request (API key in header for security)
+    const url = `${this.config.baseUrl}/models/${this.config.model}:generateContent`;
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'x-goog-api-key': this.apiKey,
       },
       body: JSON.stringify(body),
     });
@@ -111,11 +112,18 @@ export class GeminiAdapter extends BaseAdapter {
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(
-        `Gemini API error (${response.status}): ${errorText}`
+        `Gemini API error (${response.status}): ${errorText.slice(0, 500)}`
       );
     }
 
-    const data = (await response.json()) as GeminiResponse;
+    let data: GeminiResponse;
+    try {
+      data = (await response.json()) as GeminiResponse;
+    } catch (parseError) {
+      throw new Error(
+        `Failed to parse Gemini API response: ${parseError instanceof Error ? parseError.message : 'Invalid JSON'}`
+      );
+    }
 
     // Transform Gemini format to OpenAI format
     const firstCandidate = data.candidates[0];
@@ -158,8 +166,12 @@ export class GeminiAdapter extends BaseAdapter {
   async isAvailable(): Promise<boolean> {
     try {
       // Health check: try to list models
-      const url = `${this.config.baseUrl}/models?key=${this.apiKey}`;
-      const response = await fetch(url);
+      const url = `${this.config.baseUrl}/models`;
+      const response = await fetch(url, {
+        headers: {
+          'x-goog-api-key': this.apiKey,
+        },
+      });
       return response.ok;
     } catch {
       return false;

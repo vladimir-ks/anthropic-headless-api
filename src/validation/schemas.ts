@@ -67,7 +67,8 @@ export const ChatCompletionRequestSchema = z
     context_files: z.array(z.string()).optional(),
 
     // Session ID for conversation continuity
-    session_id: z.string().uuid().optional(),
+    // Allow alphanumeric with hyphens (UUID format or other session ID formats)
+    session_id: z.string().regex(/^[a-zA-Z0-9\-]+$/).optional(),
 
     // === TOOL CONTROL ===
     allowed_tools: z.array(z.string()).optional(),
