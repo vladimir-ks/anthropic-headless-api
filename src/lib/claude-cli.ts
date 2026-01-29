@@ -49,19 +49,51 @@ function validateJSONForCLI(obj: unknown, paramName: string): string {
     throw new Error(`${paramName} exceeds maximum size of ${MAX_JSON_SIZE} bytes (got ${json.length})`);
   }
 
-  // Check for suspicious patterns that could be shell injection attempts
+  // Defense-in-depth validation (Note: Bun.spawn with array args prevents shell injection,
+  // but we validate to prevent future vulnerabilities if code changes to use shell=true)
+
+  // 1. Check for null bytes (can truncate strings or cause parsing issues)
+  if (json.includes('\0')) {
+    throw new Error(`${paramName} contains null bytes`);
+  }
+
+  // 2. Check for control characters that shouldn't be in JSON strings
+  const controlChars = /[\x00-\x08\x0B\x0C\x0E-\x1F]/;
+  if (controlChars.test(json)) {
+    throw new Error(`${paramName} contains invalid control characters`);
+  }
+
+  // 3. Check JSON nesting depth to prevent deeply nested attacks
+  const maxDepth = 20;
+  let depth = 0;
+  let maxSeenDepth = 0;
+  for (const char of json) {
+    if (char === '{' || char === '[') {
+      depth++;
+      maxSeenDepth = Math.max(maxSeenDepth, depth);
+      if (depth > maxDepth) {
+        throw new Error(`${paramName} exceeds maximum nesting depth of ${maxDepth}`);
+      }
+    } else if (char === '}' || char === ']') {
+      depth--;
+    }
+  }
+
+  // 4. Check for suspicious shell metacharacters (defense-in-depth)
   const suspiciousPatterns = [
-    /\$\(/,  // Command substitution
-    /`/,     // Backticks
-    /&&/,    // Command chaining
-    /\|\|/,  // Command chaining
-    /;/,     // Command separator
-    />\s*&/, // Redirection
+    /\$\(/,      // Command substitution
+    /`/,         // Backticks
+    /&&/,        // Command chaining
+    /\|\|/,      // Command chaining
+    /;\s*\w/,    // Command separator followed by command
+    />\s*&/,     // Redirection
+    /\|\s*\w/,   // Pipe to command
+    /<\s*\(/,    // Process substitution
   ];
 
   for (const pattern of suspiciousPatterns) {
     if (pattern.test(json)) {
-      throw new Error(`${paramName} contains suspicious pattern: ${pattern}`);
+      throw new Error(`${paramName} contains suspicious pattern: shell metacharacters`);
     }
   }
 
