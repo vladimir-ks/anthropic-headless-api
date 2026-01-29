@@ -112,17 +112,13 @@ export class IntelligentRouter {
    * Determine if request requires tools
    */
   private requiresTools(request: ChatCompletionRequest): boolean {
-    // Explicit tool specification
-    if (request.tools && request.tools.length > 0) {
-      return true;
-    }
-
-    // Working directory specified (needs file access)
-    if (request.working_directory) {
-      return true;
-    }
-
-    return false;
+    return !!(
+      request.allowed_tools?.length ||
+      request.disallowed_tools?.length ||
+      request.working_directory ||
+      request.context_files?.length ||
+      request.add_dirs?.length
+    );
   }
 
   /**
