@@ -61,19 +61,33 @@ export const ChatCompletionRequestSchema = z
     system: z.string().optional(),
 
     // Working directory for context
-    working_directory: z.string().optional(),
+    working_directory: z
+      .string()
+      .refine(
+        (path) => !path.includes('..'),
+        { message: 'working_directory cannot contain path traversal (..)' }
+      )
+      .optional(),
 
     // Additional context files
-    context_files: z.array(z.string()).optional(),
+    context_files: z
+      .array(
+        z.string().refine(
+          (path) => !path.includes('..') && !path.startsWith('/etc') && !path.startsWith('/var'),
+          { message: 'context_files cannot contain path traversal or access system directories' }
+        )
+      )
+      .max(100, 'context_files cannot exceed 100 files')
+      .optional(),
 
     // Session ID for conversation continuity
     // Allow alphanumeric with hyphens (UUID format or other session ID formats)
     session_id: z.string().regex(/^[a-zA-Z0-9\-]+$/).optional(),
 
     // === TOOL CONTROL ===
-    allowed_tools: z.array(z.string()).optional(),
-    disallowed_tools: z.array(z.string()).optional(),
-    tools: z.union([z.array(z.string()), z.literal('default'), z.literal('')]).optional(),
+    allowed_tools: z.array(z.string()).max(50, 'allowed_tools cannot exceed 50 tools').optional(),
+    disallowed_tools: z.array(z.string()).max(50, 'disallowed_tools cannot exceed 50 tools').optional(),
+    tools: z.union([z.array(z.string()).max(50), z.literal('default'), z.literal('')]).optional(),
 
     // === BUDGET & PERMISSIONS ===
     max_budget_usd: z.number().positive().optional(),
@@ -106,18 +120,26 @@ export const ChatCompletionRequestSchema = z
     ephemeral: z.boolean().optional(),
 
     // === DIRECTORY ACCESS ===
-    add_dirs: z.array(z.string()).optional(),
+    add_dirs: z
+      .array(
+        z.string().refine(
+          (path) => !path.includes('..') && !path.startsWith('/etc') && !path.startsWith('/var'),
+          { message: 'add_dirs cannot contain path traversal or access system directories' }
+        )
+      )
+      .max(20, 'add_dirs cannot exceed 20 directories')
+      .optional(),
 
     // === RESILIENCE ===
     fallback_model: z.string().optional(),
 
     // === MCP INTEGRATION ===
-    mcp_config: z.array(z.string()).optional(),
+    mcp_config: z.array(z.string()).max(20, 'mcp_config cannot exceed 20 items').optional(),
     strict_mcp_config: z.boolean().optional(),
 
     // === ADVANCED ===
     verbose: z.boolean().optional(),
-    betas: z.array(z.string()).optional(),
+    betas: z.array(z.string()).max(10, 'betas cannot exceed 10 beta features').optional(),
   })
   .strict(); // Reject unknown fields
 

@@ -500,6 +500,27 @@ async function main() {
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 
+  // Global error handlers (catch unhandled rejections and exceptions)
+  process.on('unhandledRejection', (reason, promise) => {
+    log.error('Unhandled Promise Rejection:', {
+      reason: reason instanceof Error ? reason.message : String(reason),
+      stack: reason instanceof Error ? reason.stack : undefined,
+      promise: String(promise),
+    });
+    // Don't exit - log and continue (production stability)
+  });
+
+  process.on('uncaughtException', (error) => {
+    log.error('Uncaught Exception:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+    });
+    // For uncaught exceptions, we should exit after logging
+    // as the process state is undefined
+    shutdown('UNCAUGHT_EXCEPTION').catch(() => process.exit(1));
+  });
+
   // Log startup complete
   log.info('='.repeat(60));
   log.info(`Intelligent AI Gateway v${ctx.serverInfo.version} started`);
