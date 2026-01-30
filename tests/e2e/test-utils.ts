@@ -6,6 +6,12 @@
 
 export const BASE_URL = process.env.TEST_BASE_URL || 'http://127.0.0.1:3456';
 
+/**
+ * Check if E2E tests should run
+ * Set ENABLE_E2E_TESTS=true to enable
+ */
+export const E2E_ENABLED = process.env.ENABLE_E2E_TESTS === 'true';
+
 // Test result collection
 export interface TestResult {
   name: string;
@@ -67,6 +73,32 @@ export async function waitForServer(maxRetries = 30, delayMs = 1000): Promise<bo
     await new Promise(resolve => setTimeout(resolve, delayMs));
   }
   return false;
+}
+
+/**
+ * Check if server has API backends available
+ * Returns true if API backends exist, false if only tool backends
+ */
+export async function hasAPIBackends(): Promise<boolean> {
+  try {
+    const response = await fetch(`${BASE_URL}/health`);
+    if (!response.ok) return false;
+    const data = await response.json() as { routing?: { backends?: { api?: number } } };
+    return (data.routing?.backends?.api ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Skip test if no API backends
+ * Use in beforeAll: await skipIfNoAPIBackends()
+ */
+export async function skipIfNoAPIBackends(): Promise<void> {
+  const hasAPI = await hasAPIBackends();
+  if (!hasAPI) {
+    console.warn('⚠️ Skipping E2E tests: No API backends configured (only tool backends)');
+  }
 }
 
 /**

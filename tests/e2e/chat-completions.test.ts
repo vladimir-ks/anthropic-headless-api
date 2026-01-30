@@ -6,12 +6,22 @@
  */
 
 import { describe, test, expect, beforeAll } from 'bun:test';
-import { BASE_URL, waitForServer, chatCompletion, createMessage, generateUUID } from './test-utils';
+import { BASE_URL, waitForServer, chatCompletion, createMessage, generateUUID, hasAPIBackends, E2E_ENABLED } from './test-utils';
 
-describe('E2E: Chat Completions', () => {
+// Skip entire suite if E2E not enabled
+const describeE2E = E2E_ENABLED ? describe : describe.skip;
+
+// Check if API backends are available
+let apiAvailable = false;
+
+describeE2E('E2E: Chat Completions', () => {
   beforeAll(async () => {
     const ready = await waitForServer(10, 500);
     if (!ready) console.warn('Server not ready');
+    apiAvailable = await hasAPIBackends();
+    if (!apiAvailable) {
+      console.warn('⚠️  No API backends - E2E tests will fail gracefully');
+    }
   });
 
   describe('Basic Completions', () => {

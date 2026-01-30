@@ -2,20 +2,19 @@
  * Session Continuity Integration Tests
  *
  * Tests end-to-end session management and conversation continuity
- */
-
-/**
+ *
  * NOTE: These integration tests require the server to be running
- * Run the server first: bun run start
- * Then run these tests: bun test tests/session-continuity.test.ts
+ * Run with: ENABLE_E2E_TESTS=true bun test tests/session-continuity.test.ts
  */
 
 import { describe, test, expect } from 'bun:test';
 
 const TEST_PORT = 3456; // Use default port
 const BASE_URL = `http://127.0.0.1:${TEST_PORT}`;
+const E2E_ENABLED = process.env.ENABLE_E2E_TESTS === 'true';
+const describeE2E = E2E_ENABLED ? describe : describe.skip;
 
-describe('Session Continuity', () => {
+describeE2E('Session Continuity', () => {
   test('should create new session on first request', async () => {
     const response = await fetch(`${BASE_URL}/v1/chat/completions`, {
       method: 'POST',

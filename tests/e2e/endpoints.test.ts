@@ -5,9 +5,11 @@
  */
 
 import { describe, test, expect, beforeAll } from 'bun:test';
-import { BASE_URL, waitForServer, timedFetch } from './test-utils';
+import { BASE_URL, waitForServer, timedFetch, E2E_ENABLED } from './test-utils';
 
-describe('E2E: API Endpoints', () => {
+const describeE2E = E2E_ENABLED ? describe : describe.skip;
+
+describeE2E('E2E: API Endpoints', () => {
   beforeAll(async () => {
     const ready = await waitForServer(10, 500);
     if (!ready) {

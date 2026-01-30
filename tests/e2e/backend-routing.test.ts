@@ -5,9 +5,11 @@
  */
 
 import { describe, test, expect, beforeAll } from 'bun:test';
-import { BASE_URL, waitForServer, timedFetch, chatCompletion, createMessage } from './test-utils';
+import { BASE_URL, waitForServer, timedFetch, chatCompletion, createMessage, E2E_ENABLED } from './test-utils';
 
-describe('E2E: Backend Routing', () => {
+const describeE2E = E2E_ENABLED ? describe : describe.skip;
+
+describeE2E('E2E: Backend Routing', () => {
   beforeAll(async () => {
     const ready = await waitForServer(10, 500);
     if (!ready) console.warn('Server not ready');

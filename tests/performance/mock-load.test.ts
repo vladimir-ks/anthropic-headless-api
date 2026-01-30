@@ -3,11 +3,15 @@
  *
  * Tests system performance without making real API calls.
  * Uses validation-only requests to stress test request handling.
+ *
+ * Enable with: ENABLE_E2E_TESTS=true bun test tests/performance/
  */
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 
 const BASE_URL = process.env.TEST_BASE_URL || 'http://127.0.0.1:3456';
+const E2E_ENABLED = process.env.ENABLE_E2E_TESTS === 'true';
+const describeE2E = E2E_ENABLED ? describe : describe.skip;
 
 interface LoadTestResult {
   totalRequests: number;
@@ -132,7 +136,7 @@ function getLatencyDistribution(latencies: number[]): LatencyBucket[] {
   });
 }
 
-describe('Performance: Load Testing', () => {
+describeE2E('Performance: Load Testing', () => {
   beforeAll(async () => {
     // Verify server is running
     try {
@@ -383,7 +387,7 @@ describe('Performance: Load Testing', () => {
   });
 });
 
-describe('Performance: Memory & Resource Monitoring', () => {
+describeE2E('Performance: Memory & Resource Monitoring', () => {
   test('no memory leak during repeated requests', async () => {
     // Run multiple batches and check memory doesn't grow unboundedly
     const batches = 5;
