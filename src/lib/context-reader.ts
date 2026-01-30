@@ -183,9 +183,15 @@ export async function readContextFiles(
 
   for (const filename of filenames) {
     try {
+      // Defense-in-depth: reject filenames with path separators or traversal patterns
+      if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
+        console.error(`Rejected unsafe filename: ${filename}`);
+        continue;
+      }
+
       const filepath = join(directory, filename);
 
-      // Validate path to prevent traversal attacks
+      // Validate path to prevent traversal attacks (defense-in-depth)
       validateSafePath(filepath, directory);
 
       const file = Bun.file(filepath);

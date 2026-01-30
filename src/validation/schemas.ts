@@ -99,7 +99,17 @@ export const ChatCompletionRequestSchema = z
     append_system_prompt: z.string().optional(),
 
     // === STRUCTURED OUTPUT ===
-    json_schema: z.record(z.string(), z.unknown()).optional(),
+    // Basic JSON Schema structure validation (not full JSON Schema spec compliance)
+    json_schema: z
+      .object({
+        type: z.enum(['object', 'array', 'string', 'number', 'boolean', 'null']).optional(),
+        properties: z.record(z.string(), z.unknown()).optional(),
+        items: z.unknown().optional(),
+        required: z.array(z.string()).optional(),
+        description: z.string().optional(),
+      })
+      .passthrough() // Allow additional JSON Schema fields
+      .optional(),
 
     // === AGENT CONTROL ===
     agent: z.string().optional(),

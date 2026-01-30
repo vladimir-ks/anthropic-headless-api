@@ -14,6 +14,31 @@ import { resolve } from 'path';
 import type { ChatCompletionRequest, ChatCompletionResponse } from '../types/api';
 import type { RoutingDecision } from './router';
 
+/**
+ * Safely stringify objects that may contain circular references or BigInt values
+ */
+function safeStringify(obj: unknown): string {
+  try {
+    const seen = new WeakSet();
+    return JSON.stringify(obj, (key, value) => {
+      // Handle BigInt
+      if (typeof value === 'bigint') {
+        return value.toString();
+      }
+      // Handle circular references
+      if (typeof value === 'object' && value !== null) {
+        if (seen.has(value)) {
+          return '[Circular]';
+        }
+        seen.add(value);
+      }
+      return value;
+    });
+  } catch {
+    return '{"error": "Failed to serialize metadata"}';
+  }
+}
+
 interface LogEntry {
   id: string;
   timestamp: number;
@@ -164,7 +189,7 @@ export class SQLiteLogger {
         entry.costUsd || null,
         entry.queueWaitMs || null,
         entry.degraded ? 1 : 0,
-        JSON.stringify(entry.metadata)
+        safeStringify(entry.metadata)
       );
     } catch (error) {
       console.error('[SQLiteLogger] Failed to log request:', error);

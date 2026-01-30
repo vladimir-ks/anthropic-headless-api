@@ -397,16 +397,14 @@ describe('Full Lifecycle Integration', () => {
 
       // Recalculate health score (would happen during next allocation)
       try {
-        const module = await import('../../../src/lib/auth-pool/core/health-calculator');
-        const HealthCalculator = module.HealthCalculator || module.default;
-        if (!HealthCalculator) throw new Error('HealthCalculator not found in module');
+        const { HealthCalculator } = await import('../../../src/lib/auth-pool/core/health-calculator');
 
         const healthCalc = new HealthCalculator(config);
         const updatedHealth = healthCalc.calculate(sub!);
 
         // Health score should decrease due to high usage
         expect(updatedHealth).toBeLessThan(initialHealth);
-      } catch (e) {
+      } catch {
         // If HealthCalculator unavailable, just verify usage tracked correctly
         expect(sub!.currentBlockCost).toBeGreaterThanOrEqual(200); // 10 * 20
       }
