@@ -113,6 +113,49 @@ Should return 400 when exceeding limits:
 | POST /v1/chat/completions (validation only) | < 50ms |
 | POST /v1/chat/completions (with Claude) | 1-30s |
 
+## Additional Security Tests
+
+### 11. Streaming Response
+```bash
+curl -X POST http://localhost:3456/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Count 1 to 5"}],"stream":true}'
+```
+**Expected**: SSE stream with `data:` lines, ends with `data: [DONE]`
+
+### 12. Tool Use Routing
+```bash
+curl -X POST http://localhost:3456/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"List files"}],"allowed_tools":["Bash"],"working_directory":"/tmp"}'
+```
+**Expected**: Routes to Claude CLI backend, returns file listing
+
+### 13. JSON Schema Validation
+```bash
+curl -X POST http://localhost:3456/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Hi"}],"json_schema":{"type":"object","properties":{"name":{"type":"string"}}}}'
+```
+**Expected**: 200 OK with structured response
+
+### 14. Large Payload Rejection
+```bash
+# Generate >2MB payload
+python3 -c "print('{\"messages\":[{\"role\":\"user\",\"content\":\"' + 'x'*3000000 + '\"}]}')" | \
+  curl -X POST http://localhost:3456/v1/chat/completions \
+    -H "Content-Type: application/json" -d @-
+```
+**Expected**: 413 Payload Too Large
+
+### 15. Shell Injection Prevention (CLI backend)
+```bash
+curl -X POST http://localhost:3456/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Hi"}],"json_schema":{"cmd":"$(rm -rf /)"}}'
+```
+**Expected**: 400 Bad Request - shell metacharacters blocked
+
 ## Regression Checklist
 - [ ] Health endpoint returns correct version
 - [ ] Session continuity works across requests
@@ -120,3 +163,7 @@ Should return 400 when exceeding limits:
 - [ ] Rate limiting activates at threshold
 - [ ] Path traversal is blocked
 - [ ] CORS headers are present
+- [ ] Streaming responses complete with [DONE]
+- [ ] Tool requests route to CLI backend
+- [ ] Large payloads rejected (>2MB)
+- [ ] Shell metacharacters blocked in JSON params
