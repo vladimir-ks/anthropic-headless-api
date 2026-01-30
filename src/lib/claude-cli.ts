@@ -28,8 +28,9 @@ const MAX_JSON_DEPTH = 10;
 /**
  * Validate JSON object before passing to CLI to prevent injection attacks
  * @throws Error if JSON is malicious or exceeds safety limits
+ * @internal Exported for testing
  */
-function validateJSONForCLI(obj: unknown, paramName: string): string {
+export function validateJSONForCLI(obj: unknown, paramName: string): string {
   // Check depth to prevent deeply nested attack payloads
   function getDepth(o: unknown, currentDepth = 0): number {
     if (currentDepth > MAX_JSON_DEPTH) {

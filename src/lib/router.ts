@@ -16,6 +16,29 @@ import { createModuleLogger } from './auth-pool/utils/logger';
 
 const log = createModuleLogger('Router');
 
+// Timeout for backend availability checks (5 seconds)
+const AVAILABILITY_CHECK_TIMEOUT_MS = 5000;
+
+/**
+ * Wrap an async operation with a timeout
+ */
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  errorMessage: string
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(errorMessage)), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeoutId!);
+  }
+}
+
 export interface RoutingDecision {
   backend: BackendAdapter;
   reason: string;
@@ -45,7 +68,11 @@ export class IntelligentRouter {
     if (options.explicitBackend) {
       const backend = this.backendRegistry.getBackend(options.explicitBackend);
       if (backend) {
-        const available = await backend.isAvailable();
+        const available = await withTimeout(
+          backend.isAvailable(),
+          AVAILABILITY_CHECK_TIMEOUT_MS,
+          `Backend ${backend.name} availability check timed out`
+        ).catch(() => false);
         if (available) {
           return {
             backend,
@@ -136,7 +163,11 @@ export class IntelligentRouter {
 
     // Try to find an available backend with capacity
     for (const backend of toolBackends) {
-      const available = await backend.isAvailable();
+      const available = await withTimeout(
+        backend.isAvailable(),
+        AVAILABILITY_CHECK_TIMEOUT_MS,
+        `Backend ${backend.name} availability check timed out`
+      ).catch(() => false);
       if (!available) continue;
 
       // Check if process pool has capacity
@@ -244,7 +275,11 @@ export class IntelligentRouter {
   private async filterAvailable(backends: BackendAdapter[]): Promise<BackendAdapter[]> {
     const availabilityChecks = backends.map(async (backend) => {
       try {
-        const available = await backend.isAvailable();
+        const available = await withTimeout(
+          backend.isAvailable(),
+          AVAILABILITY_CHECK_TIMEOUT_MS,
+          `Backend ${backend.name} availability check timed out`
+        );
         return available ? backend : null;
       } catch {
         return null;
