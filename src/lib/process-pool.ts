@@ -15,6 +15,9 @@ interface QueuedRequest {
   queuedAt: number;
 }
 
+// Maximum time a request can wait in queue before being rejected (30 seconds)
+const QUEUE_TIMEOUT_MS = 30_000;
+
 interface ProcessPoolStats {
   active: number;
   queued: number;
@@ -32,6 +35,8 @@ export class ClaudeProcessPool {
   private readonly maxQueue: number;
   private readonly queue: QueuedRequest[] = [];
   private processingNext: boolean = false; // Prevents race condition in processNext()
+  private isShuttingDown: boolean = false;
+  private queueCleanupInterval: ReturnType<typeof setInterval> | null = null;
 
   // Statistics
   private totalProcessed: number = 0;
@@ -45,12 +50,43 @@ export class ClaudeProcessPool {
   ) {
     this.maxConcurrent = maxConcurrent;
     this.maxQueue = maxQueue;
+
+    // Start queue cleanup interval (every 5 seconds, check for stale items)
+    this.queueCleanupInterval = setInterval(() => this.cleanupStaleQueueItems(), 5000);
+  }
+
+  /**
+   * Remove stale queue items that have waited too long
+   */
+  private cleanupStaleQueueItems(): void {
+    const now = Date.now();
+    const staleItems: QueuedRequest[] = [];
+
+    // Find and remove stale items
+    for (let i = this.queue.length - 1; i >= 0; i--) {
+      const item = this.queue[i];
+      if (now - item.queuedAt > QUEUE_TIMEOUT_MS) {
+        staleItems.push(item);
+        this.queue.splice(i, 1);
+      }
+    }
+
+    // Reject stale items
+    for (const item of staleItems) {
+      this.totalFailed++;
+      item.reject(new Error(`Request timed out in queue after ${QUEUE_TIMEOUT_MS}ms`));
+    }
   }
 
   /**
    * Execute a request through the process pool
    */
   async execute(request: ChatCompletionRequest): Promise<ChatCompletionResponse> {
+    // Reject if shutting down
+    if (this.isShuttingDown) {
+      throw new Error('Process pool is shutting down');
+    }
+
     // If under capacity, execute immediately
     if (this.activeCount < this.maxConcurrent) {
       return this.executeImmediate(request);
@@ -156,6 +192,40 @@ export class ClaudeProcessPool {
   getBackendName(): string {
     return this.backend.name;
   }
+
+  /**
+   * Gracefully shutdown the pool
+   * Rejects all queued requests and waits for active requests to complete
+   */
+  async shutdown(timeoutMs: number = 30000): Promise<{ rejected: number; timedOut: boolean }> {
+    this.isShuttingDown = true;
+
+    // Stop queue cleanup interval
+    if (this.queueCleanupInterval) {
+      clearInterval(this.queueCleanupInterval);
+      this.queueCleanupInterval = null;
+    }
+
+    // Reject all queued requests
+    const rejected = this.queue.length;
+    while (this.queue.length > 0) {
+      const item = this.queue.shift();
+      if (item) {
+        item.reject(new Error('Process pool is shutting down'));
+      }
+    }
+
+    // Wait for active requests to complete (with timeout)
+    const startTime = Date.now();
+    while (this.activeCount > 0 && (Date.now() - startTime) < timeoutMs) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    return {
+      rejected,
+      timedOut: this.activeCount > 0,
+    };
+  }
 }
 
 /**
@@ -235,6 +305,20 @@ export class ProcessPoolRegistry {
       totalProcessed: allStats.reduce((sum, s) => sum + s.totalProcessed, 0),
       totalQueued: allStats.reduce((sum, s) => sum + s.totalQueued, 0),
       totalFailed: allStats.reduce((sum, s) => sum + s.totalFailed, 0),
+    };
+  }
+
+  /**
+   * Gracefully shutdown all pools
+   */
+  async shutdown(timeoutMs: number = 30000): Promise<{ totalRejected: number; anyTimedOut: boolean }> {
+    const results = await Promise.all(
+      Array.from(this.pools.values()).map((pool) => pool.shutdown(timeoutMs))
+    );
+
+    return {
+      totalRejected: results.reduce((sum, r) => sum + r.rejected, 0),
+      anyTimedOut: results.some((r) => r.timedOut),
     };
   }
 }

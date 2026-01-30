@@ -7,8 +7,13 @@
 
 import type { StorageInterface } from './storage-interface';
 
+// Maximum entries to prevent unbounded memory growth
+const MAX_DATA_ENTRIES = 100_000;
+const MAX_INDEX_ENTRIES = 10_000;
+const MAX_INDEX_VALUES = 10_000;
+
 export class MemoryStore implements StorageInterface {
-  private data: Map<string, any> = new Map();
+  private data: Map<string, unknown> = new Map();
   private indexes: Map<string, Set<string>> = new Map();
 
   // ============================================================================
@@ -17,10 +22,18 @@ export class MemoryStore implements StorageInterface {
 
   async get<T>(key: string): Promise<T | null> {
     const value = this.data.get(key);
-    return value !== undefined ? value : null;
+    return value !== undefined ? (value as T) : null;
   }
 
   async set<T>(key: string, value: T): Promise<void> {
+    // Prevent unbounded memory growth
+    if (!this.data.has(key) && this.data.size >= MAX_DATA_ENTRIES) {
+      // LRU eviction: remove oldest entry (first in map)
+      const firstKey = this.data.keys().next().value;
+      if (firstKey) {
+        this.data.delete(firstKey);
+      }
+    }
     this.data.set(key, value);
   }
 
@@ -50,7 +63,7 @@ export class MemoryStore implements StorageInterface {
     for (const key of keys) {
       const value = this.data.get(key);
       if (value !== undefined) {
-        result.set(key, value);
+        result.set(key, value as T);
       }
     }
 
@@ -71,8 +84,25 @@ export class MemoryStore implements StorageInterface {
     let index = this.indexes.get(indexKey);
 
     if (!index) {
+      // Prevent unbounded index growth
+      if (this.indexes.size >= MAX_INDEX_ENTRIES) {
+        // LRU eviction: remove oldest index
+        const firstKey = this.indexes.keys().next().value;
+        if (firstKey) {
+          this.indexes.delete(firstKey);
+        }
+      }
       index = new Set<string>();
       this.indexes.set(indexKey, index);
+    }
+
+    // Prevent unbounded values per index
+    if (!index.has(value) && index.size >= MAX_INDEX_VALUES) {
+      // LRU eviction: remove oldest value
+      const firstValue = index.values().next().value;
+      if (firstValue) {
+        index.delete(firstValue);
+      }
     }
 
     index.add(value);

@@ -252,12 +252,33 @@ export async function executeClaudeQuery(
       }
     }
 
-    // Set up timeout with proper cleanup
+    // Set up timeout with proper cleanup and SIGKILL fallback
     const timeoutMs = options.timeout ?? DEFAULT_TIMEOUT;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(() => {
-        if (proc) {
-          proc.kill();
+      timeoutId = setTimeout(async () => {
+        const currentProc = proc; // Capture reference
+        if (currentProc) {
+          // First try SIGTERM
+          currentProc.kill();
+
+          // If process doesn't exit within 5 seconds, force SIGKILL
+          const killTimeout = setTimeout(() => {
+            try {
+              currentProc.kill(9); // SIGKILL
+            } catch {
+              // Process may already be dead
+            }
+          }, 5000);
+
+          // Wait for process exit and clear kill timeout
+          try {
+            await Promise.race([
+              currentProc.exited,
+              new Promise((r) => setTimeout(r, 5500)), // Slightly longer than SIGKILL timeout
+            ]);
+          } finally {
+            clearTimeout(killTimeout);
+          }
         }
         reject(new Error(`Claude CLI timed out after ${timeoutMs}ms`));
       }, timeoutMs);
@@ -372,6 +393,7 @@ export async function executeClaudeQuery(
 
 /**
  * Check if Claude Code CLI is available
+ * Properly drains streams to prevent FD leaks
  */
 export async function checkClaudeAvailable(): Promise<boolean> {
   try {
@@ -379,7 +401,14 @@ export async function checkClaudeAvailable(): Promise<boolean> {
       stdout: 'pipe',
       stderr: 'pipe',
     });
-    const exitCode = await proc.exited;
+
+    // Drain streams to prevent FD leaks
+    const [exitCode] = await Promise.all([
+      proc.exited,
+      proc.stdout ? new Response(proc.stdout).text() : Promise.resolve(''),
+      proc.stderr ? new Response(proc.stderr).text() : Promise.resolve(''),
+    ]);
+
     return exitCode === 0;
   } catch {
     return false;
@@ -389,6 +418,7 @@ export async function checkClaudeAvailable(): Promise<boolean> {
 /**
  * Get Claude CLI version
  * Logs errors to help debug startup issues
+ * Properly drains all streams to prevent FD leaks
  */
 export async function getClaudeVersion(): Promise<string | null> {
   try {
@@ -396,8 +426,14 @@ export async function getClaudeVersion(): Promise<string | null> {
       stdout: 'pipe',
       stderr: 'pipe',
     });
-    await proc.exited;
-    const stdout = await new Response(proc.stdout).text();
+
+    // Drain all streams - critical to prevent FD leaks
+    const [, stdout] = await Promise.all([
+      proc.exited,
+      proc.stdout ? new Response(proc.stdout).text() : Promise.resolve(''),
+      proc.stderr ? new Response(proc.stderr).text() : Promise.resolve(''),
+    ]);
+
     return stdout.trim();
   } catch (error) {
     console.error('Failed to get Claude CLI version:', error instanceof Error ? error.message : error);

@@ -486,6 +486,14 @@ async function main() {
     // Stop accepting new connections
     server.stop();
 
+    // Shutdown process pools (reject queued, wait for active)
+    try {
+      const poolResult = await processPoolRegistry.shutdown(10000); // 10 second timeout
+      log.info(`Process pools shutdown: ${poolResult.totalRejected} requests rejected, timedOut: ${poolResult.anyTimedOut}`);
+    } catch (error) {
+      log.error('Error shutting down process pools', error instanceof Error ? error : new Error(String(error)));
+    }
+
     // Stop rate limiter cleanup interval
     rateLimiter.stop();
 
