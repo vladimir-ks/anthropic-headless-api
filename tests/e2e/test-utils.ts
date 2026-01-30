@@ -147,7 +147,7 @@ export function fullRequest() {
 /**
  * Read SSE stream and collect chunks
  */
-export async function readSSEStream(response: Response): Promise<{
+export async function readSSEStream(response: Response, timeoutMs = 30000): Promise<{
   chunks: unknown[];
   finalChunk: unknown | null;
   doneReceived: boolean;
@@ -159,17 +159,47 @@ export async function readSSEStream(response: Response): Promise<{
   const chunks: unknown[] = [];
   let finalChunk: unknown | null = null;
   let doneReceived = false;
+  let buffer = '';
 
   try {
+    const startTime = Date.now();
     while (true) {
+      // Timeout protection
+      if (Date.now() - startTime > timeoutMs) {
+        throw new Error(`SSE stream timeout after ${timeoutMs}ms`);
+      }
+
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        // Process remaining buffer
+        if (buffer.length > 0) {
+          const lines = buffer.split('\n').filter((l) => l.startsWith('data: '));
+          for (const line of lines) {
+            const data = line.slice(6).trim();
+            if (data && data !== '[DONE]') {
+              try {
+                const chunk = JSON.parse(data);
+                chunks.push(chunk);
+              } catch {
+                // Ignore parse errors for incomplete chunks
+              }
+            }
+          }
+        }
+        break;
+      }
 
-      const text = decoder.decode(value);
-      const lines = text.split('\n').filter((l) => l.startsWith('data: '));
+      buffer += decoder.decode(value);
+      const lines = buffer.split('\n');
 
-      for (const line of lines) {
-        const data = line.slice(6);
+      // Keep last incomplete line in buffer
+      buffer = lines[lines.length - 1];
+
+      for (let i = 0; i < lines.length - 1; i++) {
+        const line = lines[i];
+        if (!line.startsWith('data: ')) continue;
+
+        const data = line.slice(6).trim();
         if (data === '[DONE]') {
           doneReceived = true;
           break;
@@ -178,7 +208,8 @@ export async function readSSEStream(response: Response): Promise<{
         try {
           const chunk = JSON.parse(data);
           chunks.push(chunk);
-          if (chunk.choices?.[0]?.finish_reason === 'stop') {
+          // Only set finalChunk if choices exists and has finish_reason
+          if (chunk.choices && Array.isArray(chunk.choices) && chunk.choices[0]?.finish_reason === 'stop') {
             finalChunk = chunk;
           }
         } catch {

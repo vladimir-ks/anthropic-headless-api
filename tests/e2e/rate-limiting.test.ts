@@ -64,7 +64,10 @@ describeE2E('E2E: Rate Limiting', () => {
           messages: [createMessage('user', 'Hi')],
         }),
       });
-      const remaining1 = parseInt(res1.headers.get('X-RateLimit-Remaining') || '0');
+      const header1 = res1.headers.get('X-RateLimit-Remaining');
+      expect(header1).toBeTruthy();
+      const remaining1 = parseInt(header1 || '0');
+      expect(remaining1).toBeGreaterThanOrEqual(0);
 
       // Second request
       const { response: res2 } = await timedFetch(`${BASE_URL}/v1/chat/completions`, {
@@ -74,10 +77,17 @@ describeE2E('E2E: Rate Limiting', () => {
           messages: [createMessage('user', 'Hello')],
         }),
       });
-      const remaining2 = parseInt(res2.headers.get('X-RateLimit-Remaining') || '0');
+      const header2 = res2.headers.get('X-RateLimit-Remaining');
+      expect(header2).toBeTruthy();
+      const remaining2 = parseInt(header2 || '0');
+      expect(remaining2).toBeGreaterThanOrEqual(0);
 
-      // Remaining should decrease (or both be 0 if rate limited)
+      // Remaining should decrease (or stay same if at 0)
       expect(remaining2).toBeLessThanOrEqual(remaining1);
+      // Verify headers are numeric and sensible
+      const limit1 = parseInt(res1.headers.get('X-RateLimit-Limit') || '0');
+      expect(limit1).toBeGreaterThan(0);
+      expect(remaining1).toBeLessThanOrEqual(limit1);
     });
   });
 

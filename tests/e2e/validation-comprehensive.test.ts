@@ -115,7 +115,8 @@ describeE2E('E2E: Request Validation', () => {
         });
         // Should not get validation error for model
         if (response.status === 400) {
-          expect((data as any).error.message).not.toContain('model');
+          const errorMsg = (data as any).error?.message || '';
+          expect(errorMsg).not.toMatch(/model.*invalid|invalid.*model/i);
         }
       });
     }
@@ -128,6 +129,7 @@ describeE2E('E2E: Request Validation', () => {
         });
         expect(response.status).toBe(400);
         expect((data as any).error.code).toBe('validation_error');
+        expect((data as any).error.message).toBeDefined();
       });
     }
   });

@@ -29,6 +29,13 @@ export class SubscriptionManager {
     logger.info(`Initializing with ${this.config.subscriptions.length} subscriptions`);
 
     for (const subConfig of this.config.subscriptions) {
+      // Validate budget is positive to prevent division by zero in health calculations
+      if (subConfig.weeklyBudget <= 0) {
+        throw new Error(
+          `Invalid weeklyBudget for subscription ${subConfig.id}: must be positive, got ${subConfig.weeklyBudget}`
+        );
+      }
+
       const subscription = this.createSubscriptionFromConfig(subConfig);
 
       // Check if subscription already exists in storage

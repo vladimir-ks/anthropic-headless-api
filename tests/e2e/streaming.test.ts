@@ -89,8 +89,9 @@ describeE2E('E2E: Streaming Responses', () => {
       });
 
       expect(response.ok).toBe(true);
-      const { doneReceived } = await readSSEStream(response);
+      const { doneReceived, chunks } = await readSSEStream(response, 45000);
       expect(doneReceived).toBe(true);
+      expect(chunks.length).toBeGreaterThan(0);
     }, 180000);
 
     test('streaming chunks are valid JSON', async () => {
@@ -105,12 +106,15 @@ describeE2E('E2E: Streaming Responses', () => {
       });
 
       expect(response.ok).toBe(true);
-      const { chunks } = await readSSEStream(response);
+      const { chunks } = await readSSEStream(response, 45000);
 
       // All chunks should be valid objects
+      expect(chunks.length).toBeGreaterThan(0);
       for (const chunk of chunks) {
         expect(typeof chunk).toBe('object');
         expect(chunk).not.toBeNull();
+        // Verify chunk has expected structure (not complete but basic check)
+        expect((chunk as any).choices).toBeDefined();
       }
     }, 180000);
 
@@ -126,9 +130,12 @@ describeE2E('E2E: Streaming Responses', () => {
       });
 
       expect(response.ok).toBe(true);
-      const { finalChunk } = await readSSEStream(response);
+      const { finalChunk, chunks } = await readSSEStream(response, 45000);
 
+      expect(chunks.length).toBeGreaterThan(0);
       expect(finalChunk).toBeDefined();
+      expect((finalChunk as any).choices).toBeDefined();
+      expect((finalChunk as any).choices[0]).toBeDefined();
       expect((finalChunk as any).choices[0].finish_reason).toBe('stop');
     }, 180000);
 
@@ -144,11 +151,14 @@ describeE2E('E2E: Streaming Responses', () => {
       });
 
       expect(response.ok).toBe(true);
-      const { finalChunk } = await readSSEStream(response);
+      const { finalChunk, chunks } = await readSSEStream(response, 45000);
 
+      expect(chunks.length).toBeGreaterThan(0);
       expect(finalChunk).toBeDefined();
       expect((finalChunk as any).session_id).toBeDefined();
       expect(typeof (finalChunk as any).session_id).toBe('string');
+      // Verify it looks like a valid UUID
+      expect((finalChunk as any).session_id).toMatch(/^[0-9a-f\-]+$/i);
     }, 180000);
   });
 

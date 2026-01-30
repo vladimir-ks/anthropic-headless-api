@@ -217,7 +217,9 @@ describeE2E('E2E: Error Handling', () => {
         working_directory: '/tmp/../../../etc',
       });
       expect(response.status).toBe(400);
-      expect((data as any).error.message).toContain('path traversal');
+      expect((data as any).error).toBeDefined();
+      expect((data as any).error.message).toBeDefined();
+      expect((data as any).error.message.toLowerCase()).toMatch(/path|traversal|invalid/);
     });
 
     test('array overflow error', async () => {

@@ -384,8 +384,13 @@ describeE2E('E2E: Edge Cases', () => {
         messages: [createMessage('user', 'Hi')],
         working_directory: '/tmp/test\x00evil',
       });
-      // Should reject, sanitize, or rate limit
-      expect([200, 400, 429]).toContain(response.status);
+      // Should reject - null bytes are security issue
+      expect([400, 429]).toContain(response.status);
+      // If rejected with 400, should have error details
+      if (response.status === 400) {
+        expect((data as any).error).toBeDefined();
+        expect((data as any).error.message).toBeDefined();
+      }
     });
   });
 });

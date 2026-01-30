@@ -34,7 +34,13 @@ export class NotificationManager {
 
     // Check each threshold rule
     for (const rule of thresholdRules) {
-      if (weeklyPercent >= rule.threshold!) {
+      // Guard against missing threshold in schema
+      if (!rule.threshold) {
+        logger.warn('Threshold rule missing threshold value', { subscriptionId: subscription.id });
+        continue;
+      }
+
+      if (weeklyPercent >= rule.threshold) {
         const payload: NotificationPayload = {
           type: 'usage_threshold',
           severity: 'warning',
@@ -47,7 +53,7 @@ export class NotificationManager {
             blockCost: subscription.currentBlockCost,
             burnRate: subscription.burnRate,
             estimatedTimeUntilExhaustion: this.estimateExhaustion(subscription),
-            threshold: (rule.threshold! * 100).toFixed(0),
+            threshold: (rule.threshold * 100).toFixed(0),
           },
         };
 

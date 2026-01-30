@@ -93,6 +93,10 @@ export async function initializeAuthPool(
     // Start periodic rebalancing if enabled
     let rebalancingTimer: NodeJS.Timeout | null = null;
     if (config.rebalancing.enabled) {
+      // Clear any existing timer to prevent multiple concurrent rebalancing jobs
+      if (rebalancingTimer) {
+        clearInterval(rebalancingTimer);
+      }
       rebalancingTimer = startPeriodicRebalancing(balancer, config.rebalancing.intervalSeconds);
     }
 
