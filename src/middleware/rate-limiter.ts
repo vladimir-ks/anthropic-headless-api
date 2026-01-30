@@ -184,17 +184,37 @@ export class RateLimiter {
       }
 
       // LRU eviction: if still over limit, remove oldest inactive entries
+      // Uses partial sort (O(n) average) instead of full sort (O(n log n))
       if (this.entries.size > RateLimiter.MAX_ENTRIES) {
         const entriesToEvict = this.entries.size - RateLimiter.MAX_ENTRIES;
-        const sortedEntries = Array.from(this.entries.entries())
+        const entriesWithActivity = Array.from(this.entries.entries())
           .map(([key, entry]) => ({
             key,
             lastActivity: entry.timestamps[entry.timestamps.length - 1] || 0,
-          }))
-          .sort((a, b) => a.lastActivity - b.lastActivity);
+          }));
 
-        for (let i = 0; i < entriesToEvict && i < sortedEntries.length; i++) {
-          this.entries.delete(sortedEntries[i].key);
+        // Partial sort: find k smallest using quickselect-like approach
+        // For small k, this is O(n) average vs O(n log n) for full sort
+        if (entriesToEvict < entriesWithActivity.length / 4) {
+          // For small eviction counts, find k smallest iteratively
+          for (let i = 0; i < entriesToEvict; i++) {
+            let minIdx = i;
+            for (let j = i + 1; j < entriesWithActivity.length; j++) {
+              if (entriesWithActivity[j].lastActivity < entriesWithActivity[minIdx].lastActivity) {
+                minIdx = j;
+              }
+            }
+            // Swap
+            [entriesWithActivity[i], entriesWithActivity[minIdx]] =
+              [entriesWithActivity[minIdx], entriesWithActivity[i]];
+            this.entries.delete(entriesWithActivity[i].key);
+          }
+        } else {
+          // For large eviction counts, full sort is more efficient
+          entriesWithActivity.sort((a, b) => a.lastActivity - b.lastActivity);
+          for (let i = 0; i < entriesToEvict; i++) {
+            this.entries.delete(entriesWithActivity[i].key);
+          }
         }
       }
     } finally {
