@@ -50,7 +50,13 @@ class MockBackend implements BackendAdapter {
   }
 
   getConfig() {
-    return { name: 'mock-cli', type: 'claude-cli' as const, provider: 'anthropic' as const };
+    return {
+      name: 'mock-cli',
+      type: 'claude-cli' as const,
+      provider: 'anthropic' as const,
+      costPerRequest: 0.01,
+      supportsTools: true,
+    };
   }
 }
 
@@ -185,7 +191,13 @@ describe('ProcessPoolRegistry', () => {
       execute: async () => ({} as ChatCompletionResponse),
       estimateCost: () => 0,
       isAvailable: async () => true,
-      getConfig: () => ({ name: 'api', type: 'api' as const, provider: 'openai' as const }),
+      getConfig: () => ({
+        name: 'api',
+        type: 'api' as const,
+        provider: 'openai' as const,
+        costPerRequest: 0.01,
+        supportsTools: false,
+      }),
     };
 
     expect(() => registry.registerBackend(backend, 2, 5)).toThrow('Only Claude CLI backends');
