@@ -74,9 +74,15 @@ export function validateConfigPath(configPath: string): boolean {
 /**
  * Sanitize subscription ID
  * Ensures ID contains only alphanumeric, dash, underscore
+ * Returns null if sanitization results in empty/invalid ID
  */
-export function sanitizeSubscriptionId(id: string): string {
-  return id.replace(/[^a-zA-Z0-9_-]/g, '');
+export function sanitizeSubscriptionId(id: string): string | null {
+  const sanitized = id.replace(/[^a-zA-Z0-9_-]/g, '');
+  // Reject if empty or only special chars were removed
+  if (!sanitized || sanitized.length < 1) {
+    return null;
+  }
+  return sanitized;
 }
 
 /**

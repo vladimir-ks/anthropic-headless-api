@@ -259,7 +259,15 @@ export class UsageTracker {
     for (const key of allKeys) {
       // Extract timestamp from key (usage:sub1:1738070000000)
       const parts = key.split(':');
+      // Validate key format: must have exactly 3 parts
+      if (parts.length !== 3) {
+        continue; // Skip malformed keys
+      }
       const recordTimestamp = parseInt(parts[2], 10);
+      // Validate timestamp is a valid number
+      if (Number.isNaN(recordTimestamp)) {
+        continue; // Skip invalid timestamps
+      }
 
       if (recordTimestamp >= since) {
         const record = await this.storage.get<UsageRecord>(key);

@@ -64,6 +64,13 @@ export class SQLiteLogger {
 
     try {
       const migrationPath = resolve(__dirname, '../../migrations/001_create_requests_table.sql');
+
+      // Validate migration path is within project directory
+      const projectRoot = resolve(__dirname, '../..');
+      if (!migrationPath.startsWith(projectRoot)) {
+        throw new Error('Migration path escapes project directory');
+      }
+
       const migration = readFileSync(migrationPath, 'utf-8');
       this.db.exec(migration);
       console.log('[SQLiteLogger] Migrations applied successfully');

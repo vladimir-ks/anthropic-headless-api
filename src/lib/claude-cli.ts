@@ -294,6 +294,11 @@ export async function executeClaudeQuery(
     try {
       const jsonOutput = JSON.parse(stdout.trim()) as ClaudeCliJsonOutput;
 
+      // Validate required fields exist
+      if (typeof jsonOutput !== 'object' || jsonOutput === null) {
+        throw new Error('Invalid JSON structure');
+      }
+
       if (jsonOutput.is_error || jsonOutput.subtype === 'error') {
         return {
           success: false,
@@ -304,26 +309,29 @@ export async function executeClaudeQuery(
         };
       }
 
-      // Extract metadata
+      // Validate usage object exists before accessing
+      const usage = jsonOutput.usage || {};
+
+      // Extract metadata with safe defaults
       const metadata: ClaudeMetadata = {
-        durationMs: jsonOutput.duration_ms,
-        durationApiMs: jsonOutput.duration_api_ms,
-        numTurns: jsonOutput.num_turns,
-        totalCostUsd: jsonOutput.total_cost_usd,
+        durationMs: jsonOutput.duration_ms ?? 0,
+        durationApiMs: jsonOutput.duration_api_ms ?? 0,
+        numTurns: jsonOutput.num_turns ?? 1,
+        totalCostUsd: jsonOutput.total_cost_usd ?? 0,
         usage: {
-          inputTokens: jsonOutput.usage.input_tokens,
-          outputTokens: jsonOutput.usage.output_tokens,
-          cacheCreationTokens: jsonOutput.usage.cache_creation_input_tokens,
-          cacheReadTokens: jsonOutput.usage.cache_read_input_tokens,
+          inputTokens: usage.input_tokens ?? 0,
+          outputTokens: usage.output_tokens ?? 0,
+          cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
+          cacheReadTokens: usage.cache_read_input_tokens ?? 0,
         },
-        modelUsage: jsonOutput.modelUsage,
-        uuid: jsonOutput.uuid,
+        modelUsage: jsonOutput.modelUsage ?? {},
+        uuid: jsonOutput.uuid ?? '',
       };
 
       return {
         success: true,
-        output: jsonOutput.result,
-        sessionId: jsonOutput.session_id,
+        output: jsonOutput.result ?? '',
+        sessionId: jsonOutput.session_id ?? null,
         metadata,
       };
     } catch (parseError) {
