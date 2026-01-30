@@ -12,6 +12,9 @@ import type { ChatCompletionRequest, ChatCompletionResponse } from '../types/api
 import type { BackendAdapter } from './backends/base-adapter';
 import type { BackendRegistry } from './backend-registry';
 import type { ProcessPoolRegistry } from './process-pool';
+import { createModuleLogger } from './auth-pool/utils/logger';
+
+const log = createModuleLogger('Router');
 
 export interface RoutingDecision {
   backend: BackendAdapter;
@@ -52,9 +55,7 @@ export class IntelligentRouter {
           };
         }
         // Explicit backend unavailable - will fall through to smart routing
-        console.warn(
-          `[Router] Requested backend ${options.explicitBackend} unavailable, using smart routing`
-        );
+        log.warn(`Requested backend ${options.explicitBackend} unavailable, using smart routing`);
       }
     }
 
@@ -94,15 +95,13 @@ export class IntelligentRouter {
       }
 
       const duration = Date.now() - startTime;
-      console.log(
-        `[Router] Request completed via ${decision.backend.name} in ${duration}ms`
-      );
+      log.info(`Request completed via ${decision.backend.name} in ${duration}ms`);
 
       return response;
     } catch (error) {
-      console.error(
-        `[Router] Request failed via ${decision.backend.name}:`,
-        error instanceof Error ? error.message : error
+      log.error(
+        `Request failed via ${decision.backend.name}`,
+        error instanceof Error ? error : new Error(String(error))
       );
       throw error;
     }
@@ -160,7 +159,7 @@ export class IntelligentRouter {
     // All Claude CLI backends at capacity
     if (allowFallback) {
       // Fallback to API (without tools)
-      console.warn('[Router] All Claude CLI backends at capacity, falling back to API (no tools)');
+      log.warn('All Claude CLI backends at capacity, falling back to API (no tools)');
       const apiDecision = await this.routeToAPI(request);
       return {
         ...apiDecision,

@@ -6,6 +6,7 @@
  */
 
 import { createModuleLogger } from './auth-pool/utils/logger';
+import type { AllocationBalancer } from './auth-pool/core/allocation-balancer';
 
 const logger = createModuleLogger('AuthPoolClient');
 
@@ -43,7 +44,7 @@ export interface HeartbeatData {
  */
 export class AuthPoolClient {
   private enabled: boolean;
-  private allocator: any; // Will be injected
+  private allocator: AllocationBalancer | null = null;
 
   constructor(private config: { enabled: boolean }) {
     this.enabled = config.enabled;
@@ -53,7 +54,7 @@ export class AuthPoolClient {
    * Inject the allocation balancer instance
    * Called during initialization
    */
-  setAllocator(allocator: any): void {
+  setAllocator(allocator: AllocationBalancer): void {
     this.allocator = allocator;
   }
 
@@ -79,17 +80,18 @@ export class AuthPoolClient {
       // Generate client ID from session ID or random
       const clientId = request.sessionId || `client_${Date.now()}_${Math.random()}`;
 
-      const result = await this.allocator.allocateSession({
+      const result = await this.allocator!.allocateSession({
         clientId,
         ...request,
       });
 
       return result;
     } catch (error) {
-      logger.error('Allocation failed', error as Error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Allocation failed', error instanceof Error ? error : new Error(errorMessage));
       return {
         type: 'fallback',
-        reason: `Allocation error: ${error.message}`,
+        reason: `Allocation error: ${errorMessage}`,
       };
     }
   }
@@ -136,10 +138,10 @@ export class AuthPoolClient {
     }
 
     try {
-      await this.allocator.deallocateSession(clientId);
+      await this.allocator!.deallocateSession(clientId);
       logger.debug('Session deallocated', { clientId });
     } catch (error) {
-      logger.error('Deallocation failed', error as Error);
+      logger.error('Deallocation failed', error instanceof Error ? error : new Error(String(error)));
     }
   }
 }
