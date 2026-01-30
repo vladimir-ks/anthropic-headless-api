@@ -305,7 +305,7 @@ describe('E2E: Chat Completions', () => {
 
   describe('Verbose Mode', () => {
     test('verbose mode includes metadata', async () => {
-      const { data } = await chatCompletion({
+      const { response, data } = await chatCompletion({
         model: 'haiku',
         messages: [createMessage('user', 'Hi')],
         verbose: true,

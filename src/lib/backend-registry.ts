@@ -6,7 +6,7 @@
  */
 
 import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { resolve, isAbsolute } from 'path';
 import type { BackendAdapter, BackendConfig } from './backends/base-adapter';
 import { ClaudeCLIAdapter } from './backends/claude-cli-adapter';
 import { OpenRouterAdapter } from './backends/openrouter-adapter';
@@ -28,8 +28,19 @@ export class BackendRegistry {
   private config: BackendsConfig;
 
   constructor(configPath: string) {
+    // Validate config path to prevent path traversal
+    const resolvedPath = resolve(configPath);
+    if (!isAbsolute(resolvedPath)) {
+      throw new Error('Config path must resolve to absolute path');
+    }
+    // Block system directories
+    const blocked = ['/etc', '/var', '/usr', '/bin', '/sbin', '/root', '/proc', '/sys'];
+    if (blocked.some((dir) => resolvedPath.startsWith(dir))) {
+      throw new Error(`Config path blocked: ${resolvedPath}`);
+    }
+
     // Load configuration
-    const configContent = readFileSync(resolve(configPath), 'utf-8');
+    const configContent = readFileSync(resolvedPath, 'utf-8');
     this.config = JSON.parse(configContent) as BackendsConfig;
 
     // Instantiate backends

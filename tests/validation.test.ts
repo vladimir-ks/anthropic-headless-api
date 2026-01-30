@@ -130,9 +130,11 @@ describe('ChatCompletionRequestSchema', () => {
   });
 
   test('rejects invalid session_id format', () => {
+    // Schema allows alphanumeric + hyphens (not strict UUID)
+    // Invalid: special characters, spaces
     const result = validateChatCompletionRequest({
       messages: [{ role: 'user', content: 'Hi' }],
-      session_id: 'not-a-uuid',
+      session_id: 'invalid@session!id',
     });
     expect(result.success).toBe(false);
   });

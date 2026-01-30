@@ -35,7 +35,7 @@ export class AllocationBalancer {
     private sessionStore: SessionStore,
     private config: PoolConfig
   ) {
-    this.healthCalculator = new HealthCalculator();
+    this.healthCalculator = new HealthCalculator(config);
   }
 
   /**

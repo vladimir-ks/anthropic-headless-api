@@ -77,8 +77,8 @@ export class AuthPoolClient {
     }
 
     try {
-      // Generate client ID from session ID or random
-      const clientId = request.sessionId || `client_${Date.now()}_${Math.random()}`;
+      // Generate client ID from session ID or crypto-secure random
+      const clientId = request.sessionId || `client_${crypto.randomUUID()}`;
 
       const result = await this.allocator!.allocateSession({
         clientId,

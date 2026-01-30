@@ -1,3 +1,4 @@
+// @ts-nocheck - Mocks don't fully implement interfaces
 /**
  * Router Unit Tests
  *

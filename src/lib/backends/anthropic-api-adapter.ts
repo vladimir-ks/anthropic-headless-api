@@ -95,8 +95,9 @@ export class AnthropicAPIAdapter extends BaseAdapter {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout
 
+    let response: Response;
     try {
-      var response = await fetch(url, {
+      response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

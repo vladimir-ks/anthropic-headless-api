@@ -396,7 +396,7 @@ describe('Full Lifecycle Integration', () => {
       expect(sub!.currentBlockCost).toBeGreaterThan(0);
 
       // Recalculate health score (would happen during next allocation)
-      const healthCalc = new (await import('../../../src/lib/auth-pool/core/health-calculator')).HealthCalculator();
+      const healthCalc = new (await import('../../../src/lib/auth-pool/core/health-calculator')).HealthCalculator(config);
       const updatedHealth = healthCalc.calculate(sub!);
 
       // Health score should decrease due to high usage

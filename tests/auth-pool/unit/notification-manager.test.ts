@@ -86,7 +86,7 @@ describe('NotificationManager', () => {
       await manager.checkAndNotify(sub);
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
-      const callArgs = mockFetch.mock.calls[0];
+      const callArgs = (mockFetch.mock.calls as any[])[0];
       expect(callArgs[0]).toBe('https://example.com/webhook');
 
       const body = JSON.parse(callArgs[1].body);
@@ -126,7 +126,7 @@ describe('NotificationManager', () => {
 
       await manager.checkAndNotify(sub);
 
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      const body = JSON.parse((mockFetch.mock.calls as any[])[0][1].body);
       expect(body.data.estimatedTimeUntilExhaustion).toBeTruthy();
       expect(typeof body.data.estimatedTimeUntilExhaustion).toBe('string');
     });
@@ -157,7 +157,7 @@ describe('NotificationManager', () => {
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
 
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      const body = JSON.parse((mockFetch.mock.calls as any[])[0][1].body);
       expect(body.type).toBe('failover');
       expect(body.severity).toBe('warning');
       expect(body.data.clientId).toBe('client1');
@@ -261,9 +261,9 @@ describe('NotificationManager', () => {
       );
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
-      expect(mockFetch.mock.calls[0][0]).toBe('https://example.com/webhook');
+      expect((mockFetch.mock.calls as any[])[0][0]).toBe('https://example.com/webhook');
 
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      const body = JSON.parse((mockFetch.mock.calls as any[])[0][1].body);
       expect(body.message).toBe('Test message');
       expect(body.data.foo).toBe('bar');
     });

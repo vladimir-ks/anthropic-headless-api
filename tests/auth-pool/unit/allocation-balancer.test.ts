@@ -122,7 +122,7 @@ describe('AllocationBalancer', () => {
       });
 
       expect(result.subscriptionId).not.toBe('sub1');
-      expect(['sub2', 'sub3']).toContain(result.subscriptionId);
+      expect(['sub2', 'sub3']).toContain(result.subscriptionId as string);
     });
 
     test('should exclude subscriptions at client capacity', async () => {

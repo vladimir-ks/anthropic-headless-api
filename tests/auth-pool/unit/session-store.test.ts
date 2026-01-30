@@ -144,7 +144,7 @@ describe('SessionStore', () => {
     test('should persist to storage', async () => {
       await store.updateSession('client1', { sessionCost: 20 });
 
-      const stored = await storage.get('session:client1');
+      const stored = await storage.get('session:client1') as { sessionCost: number };
       expect(stored.sessionCost).toBe(20);
     });
 
@@ -240,7 +240,7 @@ describe('SessionStore', () => {
       });
 
       // Manually set lastActivity to old timestamp
-      const session = await storage.get('session:client1');
+      const session = await storage.get('session:client1') as { lastActivity: number };
       session.lastActivity = now - STALE_THRESHOLD - 1000; // 6 minutes ago
       await storage.set('session:client1', session);
 
