@@ -174,14 +174,34 @@ src/
 │   └── claude.ts         # Claude CLI output types
 ├── lib/
 │   ├── claude-cli.ts     # CLI wrapper with JSON output
-│   └── context-reader.ts # CONTEXT.md reader
+│   ├── context-reader.ts # CONTEXT.md reader
+│   ├── router.ts         # Intelligent backend routing
+│   ├── backend-registry.ts # Multi-backend management
+│   ├── process-pool.ts   # CLI process pooling
+│   ├── backends/         # API adapter implementations
+│   │   ├── base-adapter.ts
+│   │   ├── claude-cli-adapter.ts
+│   │   ├── anthropic-api-adapter.ts
+│   │   ├── openai-adapter.ts
+│   │   ├── openrouter-adapter.ts
+│   │   └── gemini-adapter.ts
+│   └── auth-pool/        # Multi-subscription management
+│       ├── core/         # Allocation, sessions, usage tracking
+│       └── utils/        # Logging, validation, security
 ├── middleware/
 │   └── rate-limiter.ts   # Sliding window rate limiting
-├── routes/
-│   └── chat.ts           # Chat completions handler
 └── validation/
     └── schemas.ts        # Zod request validation
 ```
+
+### Multi-Backend Support
+
+Configure multiple backends in `backends.json`:
+- **Claude CLI** - Full tool use, file access, session continuity
+- **Anthropic API** - Direct API calls for simple chat
+- **OpenAI/OpenRouter/Gemini** - Alternative providers
+
+The router automatically selects the optimal backend based on request requirements (tools needed, cost, availability).
 
 ## CLI Client
 
@@ -211,8 +231,17 @@ bun run dev
 # Type check
 bun run typecheck
 
-# Run tests (40 tests)
-bun test
+# Run unit tests (~300 tests)
+bun run test
+
+# Run all tests including auth-pool
+bun run test:unit
+
+# Run E2E tests (requires running server + API backends)
+ENABLE_E2E_TESTS=true bun run test:e2e
+
+# Run performance tests
+ENABLE_E2E_TESTS=true bun run test:perf
 ```
 
 ## Documentation

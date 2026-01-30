@@ -15,7 +15,7 @@ interface NotificationPayload {
   severity: 'info' | 'warning' | 'error';
   message: string;
   subscriptionId?: string;
-  data: any;
+  data: Record<string, unknown>;
 }
 
 export class NotificationManager {

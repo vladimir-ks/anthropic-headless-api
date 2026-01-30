@@ -96,12 +96,12 @@ export function validateEmail(email: string): boolean {
 /**
  * Redact sensitive data for logging
  */
-export function redactSensitive(data: any): any {
+export function redactSensitive(data: unknown): unknown {
   if (typeof data !== 'object' || data === null) {
     return data;
   }
 
-  const redacted = { ...data };
+  const redacted = { ...(data as Record<string, unknown>) };
   const sensitiveKeys = ['password', 'token', 'apiKey', 'secret', 'credential'];
 
   for (const key of Object.keys(redacted)) {
