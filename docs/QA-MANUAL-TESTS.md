@@ -90,6 +90,24 @@ curl -I -X OPTIONS http://localhost:3456/v1/chat/completions
 ```
 **Expected**: Access-Control-Allow-Origin header present
 
+### 11. Request Tracing (X-Request-ID)
+```bash
+# Server generates request ID
+curl -v -X POST http://localhost:3456/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Hi"}]}' 2>&1 | grep -i x-request-id
+```
+**Expected**: `X-Request-ID: req-xxxxx-xxxxxxxx` header in response
+
+```bash
+# Client provides request ID
+curl -v -X POST http://localhost:3456/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-Request-ID: my-custom-id-123" \
+  -d '{"messages":[{"role":"user","content":"Hi"}]}' 2>&1 | grep -i x-request-id
+```
+**Expected**: `X-Request-ID: my-custom-id-123` echoed back
+
 ## Security Verification
 
 ### Path Traversal Tests
@@ -167,3 +185,4 @@ curl -X POST http://localhost:3456/v1/chat/completions \
 - [ ] Tool requests route to CLI backend
 - [ ] Large payloads rejected (>2MB)
 - [ ] Shell metacharacters blocked in JSON params
+- [ ] X-Request-ID header in responses
