@@ -29,5 +29,8 @@ logs/
 # Test coverage
 coverage/
 
+# Test temp files
+tests/.test-temp/
+
 # Bun
 bun.lockb
