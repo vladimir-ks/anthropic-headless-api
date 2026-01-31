@@ -45,8 +45,23 @@ export async function initializeAuthPool(
       return null;
     }
 
-    const configContent = fs.readFileSync(configPath, 'utf8');
-    const config: PoolConfig = JSON.parse(configContent);
+    let configContent: string;
+    try {
+      configContent = fs.readFileSync(configPath, 'utf8');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Failed to read config file: ${message}`, undefined, { configPath });
+      return null;
+    }
+
+    let config: PoolConfig;
+    try {
+      config = JSON.parse(configContent);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Failed to parse config JSON: ${message}`, undefined, { configPath });
+      return null;
+    }
 
     if (!config.subscriptions || config.subscriptions.length === 0) {
       logger.info('No subscriptions configured, auth pool disabled');

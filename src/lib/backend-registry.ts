@@ -39,9 +39,32 @@ export class BackendRegistry {
       throw new Error(`Config path blocked: ${resolvedPath}`);
     }
 
-    // Load configuration
-    const configContent = readFileSync(resolvedPath, 'utf-8');
-    this.config = JSON.parse(configContent) as BackendsConfig;
+    // Load configuration with proper error handling
+    let configContent: string;
+    try {
+      configContent = readFileSync(resolvedPath, 'utf-8');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to read config file ${resolvedPath}: ${message}`);
+    }
+
+    try {
+      this.config = JSON.parse(configContent) as BackendsConfig;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to parse config JSON from ${resolvedPath}: ${message}`);
+    }
+
+    // Validate config structure
+    if (!this.config.backends || !Array.isArray(this.config.backends)) {
+      throw new Error(`Invalid config: 'backends' must be an array in ${resolvedPath}`);
+    }
+    if (!this.config.routing || typeof this.config.routing !== 'object') {
+      throw new Error(`Invalid config: 'routing' object required in ${resolvedPath}`);
+    }
+    if (!this.config.routing.defaultBackend) {
+      throw new Error(`Invalid config: 'routing.defaultBackend' required in ${resolvedPath}`);
+    }
 
     // Instantiate backends
     for (const backendConfig of this.config.backends) {
@@ -138,22 +161,36 @@ export class BackendRegistry {
 
   /**
    * Check if all backends are healthy (parallel health checks)
+   * Uses Promise.allSettled to ensure one failing check doesn't break others
    */
   async healthCheck(): Promise<Map<string, boolean>> {
     const results = new Map<string, boolean>();
+    const entries = Array.from(this.backends.entries());
 
-    const checks = Array.from(this.backends.entries()).map(
-      async ([name, backend]) => {
-        try {
-          const isAvailable = await backend.isAvailable();
-          results.set(name, isAvailable);
-        } catch {
-          results.set(name, false);
-        }
+    const checks = entries.map(async ([name, backend]) => {
+      try {
+        const isAvailable = await backend.isAvailable();
+        return { name, isAvailable, error: null };
+      } catch (error) {
+        return { name, isAvailable: false, error };
       }
-    );
+    });
 
-    await Promise.all(checks);
+    // Use allSettled to handle partial failures gracefully
+    const settled = await Promise.allSettled(checks);
+
+    for (const result of settled) {
+      if (result.status === 'fulfilled') {
+        const { name, isAvailable, error } = result.value;
+        results.set(name, isAvailable);
+        if (error) {
+          console.warn(`[BackendRegistry] Health check failed for ${name}:`, error);
+        }
+      } else {
+        // This shouldn't happen since we catch errors above, but handle it anyway
+        console.error('[BackendRegistry] Unexpected health check rejection:', result.reason);
+      }
+    }
 
     return results;
   }

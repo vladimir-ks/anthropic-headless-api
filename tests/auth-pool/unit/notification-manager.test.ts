@@ -286,17 +286,19 @@ describe('NotificationManager', () => {
     test('should handle webhook failure gracefully', async () => {
       mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
-      await expect(
-        manager['send'](
-          {
-            type: 'test',
-            severity: 'info',
-            message: 'Test',
-            data: {},
-          },
-          ['webhook']
-        )
-      ).resolves.toBeUndefined();
+      // send() now returns boolean - false indicates failure
+      const result = await manager['send'](
+        {
+          type: 'test',
+          severity: 'info',
+          message: 'Test',
+          data: {},
+        },
+        ['webhook']
+      );
+
+      // Should not throw, but returns false to indicate failure
+      expect(result).toBe(false);
     });
 
     test('should skip webhook if no URL configured', async () => {

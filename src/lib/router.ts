@@ -72,7 +72,12 @@ export class IntelligentRouter {
           backend.isAvailable(),
           AVAILABILITY_CHECK_TIMEOUT_MS,
           `Backend ${backend.name} availability check timed out`
-        ).catch(() => false);
+        ).catch((error) => {
+          log.warn(`Backend ${options.explicitBackend} availability check failed`, {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return false;
+        });
         if (available) {
           return {
             backend,
@@ -167,7 +172,12 @@ export class IntelligentRouter {
         backend.isAvailable(),
         AVAILABILITY_CHECK_TIMEOUT_MS,
         `Backend ${backend.name} availability check timed out`
-      ).catch(() => false);
+      ).catch((error) => {
+        log.warn(`Backend ${backend.name} availability check failed`, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return false;
+      });
       if (!available) continue;
 
       // Check if process pool has capacity
