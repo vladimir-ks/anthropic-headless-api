@@ -85,6 +85,27 @@ function createLogger(config: ServerConfig) {
 }
 
 // =============================================================================
+// REQUEST TRACING
+// =============================================================================
+
+/**
+ * Generate a unique request ID for tracing
+ * Format: req-{timestamp}-{random}
+ */
+function generateRequestId(): string {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).substring(2, 10);
+  return `req-${timestamp}-${random}`;
+}
+
+/**
+ * Extract or generate request ID from request headers
+ */
+function getRequestId(req: Request): string {
+  return req.headers.get('X-Request-ID') || generateRequestId();
+}
+
+// =============================================================================
 // RESPONSE HELPERS
 // =============================================================================
 
@@ -92,7 +113,8 @@ function corsHeaders(): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key, X-Session-Id',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key, X-Session-Id, X-Request-ID',
+    'Access-Control-Expose-Headers': 'X-Request-ID, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset',
   };
 }
 
@@ -108,13 +130,19 @@ function rateLimitHeaders(result: RateLimitResult): Record<string, string> {
 function jsonResponse(
   data: unknown,
   status: number = 200,
-  extraHeaders: Record<string, string> = {}
+  extraHeaders: Record<string, string> = {},
+  requestId?: string
 ): Response {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...corsHeaders(),
     ...extraHeaders,
   };
+
+  // Include request ID if provided
+  if (requestId) {
+    headers['X-Request-ID'] = requestId;
+  }
 
   return new Response(JSON.stringify(data), { status, headers });
 }
@@ -137,7 +165,10 @@ async function handleRequest(req: Request, ctx: GatewayContext): Promise<Respons
   const path = url.pathname;
   const method = req.method;
 
-  ctx.log.debug(`${method} ${path}`);
+  // Generate or extract request ID for tracing
+  const requestId = getRequestId(req);
+
+  ctx.log.debug(`[${requestId}] ${method} ${path}`);
 
   // CORS preflight
   if (method === 'OPTIONS') {
@@ -170,7 +201,7 @@ async function handleRequest(req: Request, ctx: GatewayContext): Promise<Respons
   const rateLimitResult = ctx.rateLimiter.check(rateLimitKey);
 
   if (!rateLimitResult.allowed) {
-    ctx.log.warn(`Rate limited: ${rateLimitKey}`);
+    ctx.log.warn(`[${requestId}] Rate limited: ${rateLimitKey}`);
     const error: APIError = {
       error: {
         message: 'Too many requests. Please slow down.',
@@ -181,7 +212,7 @@ async function handleRequest(req: Request, ctx: GatewayContext): Promise<Respons
         },
       },
     };
-    return jsonResponse(error, 429, rateLimitHeaders(rateLimitResult));
+    return jsonResponse(error, 429, rateLimitHeaders(rateLimitResult), requestId);
   }
 
   // List models
@@ -300,7 +331,7 @@ async function handleRequest(req: Request, ctx: GatewayContext): Promise<Respons
       const preferredBackend = explicitBackend || body.backend;
 
       ctx.log.info(
-        `Request: msgs=${body.messages?.length || 0}, backend=${preferredBackend || 'auto'}, tools=${body.tools?.length || 0}, session=${body.session_id?.slice(0, 8) || 'new'}...`
+        `[${requestId}] Request: msgs=${body.messages?.length || 0}, backend=${preferredBackend || 'auto'}, tools=${body.tools?.length || 0}, session=${body.session_id?.slice(0, 8) || 'new'}...`
       );
 
       const startTime = Date.now();
@@ -321,7 +352,7 @@ async function handleRequest(req: Request, ctx: GatewayContext): Promise<Respons
         response = await ctx.router.execute(body, decision);
       } catch (execError) {
         error = execError instanceof Error ? execError.message : String(execError);
-        ctx.log.error(`Execution error: ${error}`);
+        ctx.log.error(`[${requestId}] Execution error: ${error}`);
 
         // Log failed request
         const duration = Date.now() - startTime;
@@ -336,7 +367,8 @@ async function handleRequest(req: Request, ctx: GatewayContext): Promise<Respons
             },
           },
           500,
-          rateLimitHeaders(rateLimitResult)
+          rateLimitHeaders(rateLimitResult),
+          requestId
         );
       }
 
@@ -346,13 +378,13 @@ async function handleRequest(req: Request, ctx: GatewayContext): Promise<Respons
       await ctx.sqliteLogger.log(body, response, decision, duration);
 
       ctx.log.info(
-        `Completed: backend=${decision.backend.name}, session=${response.session_id?.slice(0, 8) || 'none'}..., tokens=${response.usage?.prompt_tokens || 0}→${response.usage?.completion_tokens || 0}, cost=$${decision.estimatedCost.toFixed(4)}, time=${duration}ms${decision.isFallback ? ' [DEGRADED]' : ''}`
+        `[${requestId}] Completed: backend=${decision.backend.name}, session=${response.session_id?.slice(0, 8) || 'none'}..., tokens=${response.usage?.prompt_tokens || 0}→${response.usage?.completion_tokens || 0}, cost=$${decision.estimatedCost.toFixed(4)}, time=${duration}ms${decision.isFallback ? ' [DEGRADED]' : ''}`
       );
 
-      return jsonResponse(response, 200, rateLimitHeaders(rateLimitResult));
+      return jsonResponse(response, 200, rateLimitHeaders(rateLimitResult), requestId);
     } catch (error) {
       // Structured error logging with context
-      ctx.log.error('Request error:', {
+      ctx.log.error(`[${requestId}] Request error:`, {
         path,
         method,
         error: error instanceof Error ? error.message : String(error),
@@ -370,7 +402,8 @@ async function handleRequest(req: Request, ctx: GatewayContext): Promise<Respons
             },
           },
           400,
-          rateLimitHeaders(rateLimitResult)
+          rateLimitHeaders(rateLimitResult),
+          requestId
         );
       }
 
@@ -387,7 +420,7 @@ async function handleRequest(req: Request, ctx: GatewayContext): Promise<Respons
           code: 'internal_error',
         },
       };
-      return jsonResponse(apiError, 500, rateLimitHeaders(rateLimitResult));
+      return jsonResponse(apiError, 500, rateLimitHeaders(rateLimitResult), requestId);
     }
   }
 
@@ -401,7 +434,8 @@ async function handleRequest(req: Request, ctx: GatewayContext): Promise<Respons
       },
     },
     404,
-    rateLimitHeaders(rateLimitResult)
+    rateLimitHeaders(rateLimitResult),
+    requestId
   );
 }
 
