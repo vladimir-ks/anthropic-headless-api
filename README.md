@@ -231,7 +231,7 @@ bun run dev
 # Type check
 bun run typecheck
 
-# Run unit tests (~350 tests)
+# Run unit tests (~370 tests)
 bun run test
 
 # Run all tests including auth-pool
