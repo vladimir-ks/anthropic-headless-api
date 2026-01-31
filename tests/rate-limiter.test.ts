@@ -3,7 +3,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { RateLimiter } from '../src/middleware/rate-limiter';
+import { RateLimiter, getRateLimitKey } from '../src/middleware/rate-limiter';
 
 describe('RateLimiter', () => {
   let rateLimiter: RateLimiter;
@@ -99,5 +99,80 @@ describe('RateLimiter', () => {
     }
 
     disabledLimiter.stop();
+  });
+});
+
+describe('getRateLimitKey', () => {
+  test('uses API key when present', () => {
+    const req = new Request('http://test.com', {
+      headers: { 'X-API-Key': 'sk-1234567890abcdefghij' },
+    });
+    // First 20 chars: sk-1234567890abcdefg (20 chars)
+    expect(getRateLimitKey(req)).toBe('apikey:sk-1234567890abcdefg');
+  });
+
+  test('truncates long API keys', () => {
+    const req = new Request('http://test.com', {
+      headers: { 'X-API-Key': 'sk-verylongapikeymorethan20characters' },
+    });
+    expect(getRateLimitKey(req)).toBe('apikey:sk-verylongapikeymor');
+  });
+
+  test('uses Bearer token when no API key', () => {
+    const req = new Request('http://test.com', {
+      headers: { 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9' },
+    });
+    // First 20 chars after "Bearer "
+    expect(getRateLimitKey(req)).toBe('token:eyJhbGciOiJIUzI1NiIs');
+  });
+
+  test('uses X-Forwarded-For first IP', () => {
+    const req = new Request('http://test.com', {
+      headers: { 'X-Forwarded-For': '192.168.1.1, 10.0.0.1, 172.16.0.1' },
+    });
+    expect(getRateLimitKey(req)).toBe('ip:192.168.1.1');
+  });
+
+  test('validates IPv6 addresses', () => {
+    const req = new Request('http://test.com', {
+      headers: { 'X-Forwarded-For': '2001:0db8:85a3:0000:0000:8a2e:0370:7334' },
+    });
+    // IPv6 39 chars - should pass through fully
+    expect(getRateLimitKey(req)).toBe('ip:2001:0db8:85a3:0000:0000:8a2e:0370:7334');
+  });
+
+  test('rejects malicious IP with special chars', () => {
+    const req = new Request('http://test.com', {
+      headers: { 'X-Forwarded-For': '<script>alert(1)</script>' },
+    });
+    // Should fall through to anonymous since IP is invalid
+    expect(getRateLimitKey(req)).toBe('anonymous');
+  });
+
+  test('handles very long X-Forwarded-For', () => {
+    // Create a long but valid-looking IP string
+    const longIp = '1234567890'.repeat(100);
+    const req = new Request('http://test.com', {
+      headers: { 'X-Forwarded-For': longIp },
+    });
+    // Should be truncated (45 chars max) - result is ip: + truncated string
+    const result = getRateLimitKey(req);
+    expect(result.length).toBeLessThanOrEqual(48); // "ip:" + max 45 chars
+  });
+
+  test('uses remote IP when no headers', () => {
+    const req = new Request('http://test.com');
+    expect(getRateLimitKey(req, '10.0.0.100')).toBe('ip:10.0.0.100');
+  });
+
+  test('returns anonymous as fallback', () => {
+    const req = new Request('http://test.com');
+    expect(getRateLimitKey(req)).toBe('anonymous');
+  });
+
+  test('sanitizes remote IP with invalid chars', () => {
+    const req = new Request('http://test.com');
+    // Invalid remote IP should fall to anonymous
+    expect(getRateLimitKey(req, 'invalid<>ip')).toBe('anonymous');
   });
 });

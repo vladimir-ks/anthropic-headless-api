@@ -280,13 +280,40 @@ export function createDefaultRateLimiter(): RateLimiter {
   });
 }
 
+/** Maximum length for IP address in rate limit key (IPv6 max = 45 chars) */
+const MAX_IP_LENGTH = 45;
+
+/** Maximum length for API key/token in rate limit key */
+const MAX_KEY_LENGTH = 20;
+
+/** IPv4/IPv6 validation regex (loose validation for performance) */
+const IP_PATTERN = /^[\da-fA-F.:]+$/;
+
+/**
+ * Sanitize and validate an IP address for use in rate limit keys
+ * Returns null if invalid
+ */
+function sanitizeIp(ip: string | undefined): string | null {
+  if (!ip) return null;
+
+  // Trim and limit length to prevent memory bloat
+  const trimmed = ip.trim().substring(0, MAX_IP_LENGTH);
+
+  // Basic format validation (alphanumeric, dots, colons only)
+  if (!IP_PATTERN.test(trimmed)) {
+    return null;
+  }
+
+  return trimmed;
+}
+
 /**
  * Extract rate limit key from request
  *
  * Priority:
  * 1. X-API-Key header
  * 2. Authorization Bearer token (first 20 chars)
- * 3. X-Forwarded-For header (first IP)
+ * 3. X-Forwarded-For header (first IP, validated)
  * 4. Remote IP
  * 5. "anonymous" fallback
  */
@@ -294,26 +321,31 @@ export function getRateLimitKey(req: Request, remoteIp?: string): string {
   // Check for API key header
   const apiKey = req.headers.get('X-API-Key');
   if (apiKey) {
-    return `apikey:${apiKey.substring(0, 20)}`;
+    return `apikey:${apiKey.substring(0, MAX_KEY_LENGTH)}`;
   }
 
   // Check for Authorization header
   const auth = req.headers.get('Authorization');
   if (auth?.startsWith('Bearer ')) {
-    const token = auth.slice(7, 27); // First 20 chars of token
+    const token = auth.slice(7, 7 + MAX_KEY_LENGTH); // First 20 chars of token
     return `token:${token}`;
   }
 
-  // Check for X-Forwarded-For
+  // Check for X-Forwarded-For (first IP only, sanitized)
   const forwarded = req.headers.get('X-Forwarded-For');
   if (forwarded) {
-    const firstIp = forwarded.split(',')[0].trim();
-    return `ip:${firstIp}`;
+    const firstIp = forwarded.split(',')[0];
+    const sanitized = sanitizeIp(firstIp);
+    if (sanitized) {
+      return `ip:${sanitized}`;
+    }
+    // Invalid IP format - fall through to other options
   }
 
-  // Use remote IP if provided
-  if (remoteIp) {
-    return `ip:${remoteIp}`;
+  // Use remote IP if provided (sanitized)
+  const sanitizedRemote = sanitizeIp(remoteIp);
+  if (sanitizedRemote) {
+    return `ip:${sanitizedRemote}`;
   }
 
   // Fallback
