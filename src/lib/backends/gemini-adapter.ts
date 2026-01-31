@@ -146,6 +146,18 @@ export class GeminiAdapter extends BaseAdapter {
       throw new Error('Gemini API returned no candidates');
     }
 
+    // Validate content structure exists
+    if (!firstCandidate.content || !Array.isArray(firstCandidate.content.parts)) {
+      throw new Error('Gemini API returned candidate with missing content structure');
+    }
+
+    // Extract text content, warn if empty
+    const textPart = firstCandidate.content.parts[0];
+    const content = textPart?.text ?? '';
+    if (!content && firstCandidate.content.parts.length === 0) {
+      console.warn('[GeminiAdapter] Response contains empty parts array');
+    }
+
     const openAIResponse: ChatCompletionResponse = {
       id: `chatcmpl-gemini-${Date.now()}`,
       object: 'chat.completion',
@@ -156,7 +168,7 @@ export class GeminiAdapter extends BaseAdapter {
           index: 0,
           message: {
             role: 'assistant',
-            content: firstCandidate.content.parts[0]?.text || '',
+            content,
           },
           finish_reason:
             firstCandidate.finishReason === 'STOP' ? 'stop' : 'length',

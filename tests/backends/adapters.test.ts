@@ -257,6 +257,32 @@ describe('Backend Adapters', () => {
         messages: [{ role: 'user', content: 'Hi' }],
       })).rejects.toThrow('no candidates');
     });
+
+    test('handles candidate with missing content structure', async () => {
+      const { GeminiAdapter } = await import('../../src/lib/backends/gemini-adapter');
+
+      process.env.GEMINI_API_KEY = 'test-key';
+
+      const adapter = new GeminiAdapter({
+        name: 'test-gemini',
+        type: 'api',
+        provider: 'google',
+        model: 'gemini-1.5-pro',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+        authTokenEnv: 'GEMINI_API_KEY',
+        costPerRequest: 0.0125,
+        supportsTools: false,
+      });
+
+      // Mock response with candidate missing content
+      mockFetch.mockImplementationOnce(() => Promise.resolve(new Response(JSON.stringify({
+        candidates: [{ finishReason: 'STOP' }],
+      }), { status: 200 })));
+
+      await expect(adapter.execute({
+        messages: [{ role: 'user', content: 'Hi' }],
+      })).rejects.toThrow('missing content');
+    });
   });
 
   describe('OpenRouterAdapter', () => {
